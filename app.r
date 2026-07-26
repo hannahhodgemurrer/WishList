@@ -680,6 +680,9 @@ server <- function(input, output, session) {
               value = cur_val,
               placeholder = "Item name...",
               onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Item', value: this.value}, {priority: 'event'})", row_id),
+              onkeydown = "event.stopPropagation();",
+              onkeyup = "event.stopPropagation();",
+              onclick = "event.stopPropagation();",
               class = "form-control",
               style = "padding: 4px 6px; font-size: 13px; font-weight: bold; width: 100%;"
             )
@@ -696,6 +699,9 @@ server <- function(input, output, session) {
               value = cur_val,
               placeholder = "e.g. Medium",
               onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Size', value: this.value}, {priority: 'event'})", row_id),
+              onkeydown = "event.stopPropagation();",
+              onkeyup = "event.stopPropagation();",
+              onclick = "event.stopPropagation();",
               class = "form-control",
               style = "padding: 4px 6px; font-size: 13px; width: 100%;"
             )
@@ -713,6 +719,9 @@ server <- function(input, output, session) {
                 value = cur_val,
                 placeholder = "https://...",
                 onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Link', value: this.value}, {priority: 'event'})", row_id),
+                onkeydown = "event.stopPropagation();",
+                onkeyup = "event.stopPropagation();",
+                onclick = "event.stopPropagation();",
                 class = "form-control",
                 style = "padding: 4px 6px; font-size: 13px; display: inline-block; width: calc(100% - 36px);"
               ),
