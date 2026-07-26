@@ -645,271 +645,139 @@ server <- function(input, output, session) {
     showNotification("Refreshed with latest data", type = "message")
   })
 
-# Tab 1: My Wish List Table (editable)
-output$my_wishlist_table <- renderReactable({
+  # Tab 1: My Wish List Table (editable, bold Item header & cells, sorted alphabetically)
+  output$my_wishlist_table <- renderReactable({
+    df <- local_df()
+    req(df, rv$current_user)
+    my_df <- df %>%
+      mutate(row_id = row_number()) %>%
+      filter(Name == rv$current_user & (is.na(`Entered By`) | `Entered By` == rv$current_user)) %>%
+      arrange(tolower(ifelse(is.na(Item), "", Item)))
 
-  df <- local_df()
-  req(df, rv$current_user)
-
-  my_df <- df %>%
-    mutate(sheet_row = row_number() + 1) %>%   # +1 for header row
-    filter(
-      Name == rv$current_user &
-        (is.na(`Entered By`) | `Entered By` == rv$current_user)
-    ) %>%
-    arrange(tolower(ifelse(is.na(Item), "", Item)))
-
-  reactable(
-    my_df %>% select(Item, Size, Link, sheet_row),
-
-    pagination = FALSE,
-    wrap = TRUE,
-    filterable = TRUE,
-    searchable = TRUE,
-    striped = TRUE,
-    highlight = TRUE,
-    bordered = TRUE,
-
-    language = reactableLang(
-      searchPlaceholder = "Search items...",
-      filterPlaceholder = "Filter..."
-    ),
-
-    columns = list(
-
-      Item = colDef(
-        name = "Item",
-        headerStyle = list(fontWeight = "bold"),
-        minWidth = 180,
-
-        cell = function(value, index) {
-
-          sheet_row <- my_df$sheet_row[index]
-
-          tags$input(
-            type = "text",
-            value = ifelse(is.na(value), "", value),
-            placeholder = "Item name...",
-
-            onblur = sprintf(
-              "Shiny.setInputValue(
-                'my_edit',
-                {
-                  row:%d,
-                  col:'Item',
-                  value:this.value
-                },
-                {priority:'event'}
-              )",
-              sheet_row
-            ),
-
-            class = "form-control",
-
-            style = paste(
-              "padding:4px 6px;",
-              "font-size:13px;",
-              "font-weight:bold;",
-              "width:100%;"
-            )
-          )
-        }
+    reactable(
+      my_df %>% select(Item, Size, Link, row_id),
+      pagination = FALSE,
+      wrap = TRUE,
+      filterable = FALSE,
+      searchable = ,
+      striped = TRUE,
+      highlight = TRUE,
+      bordered = TRUE,
+      language = reactableLang(
+        searchPlaceholder = "Search items...",
+        filterPlaceholder = "Filter..."
       ),
-
-
-      Size = colDef(
-        name = "Size / Options",
-        minWidth = 120,
-
-        cell = function(value, index) {
-
-          sheet_row <- my_df$sheet_row[index]
-
-          tags$input(
-            type = "text",
-            value = ifelse(is.na(value), "", value),
-            placeholder = "e.g. Medium",
-
-            onblur = sprintf(
-              "Shiny.setInputValue(
-                'my_edit',
-                {
-                  row:%d,
-                  col:'Size',
-                  value:this.value
-                },
-                {priority:'event'}
-              )",
-              sheet_row
-            ),
-
-            class = "form-control",
-
-            style = "padding:4px 6px;font-size:13px;width:100%;"
-          )
-        }
-      ),
-
-
-      Link = colDef(
-        name = "Link",
-        minWidth = 250,
-
-        cell = function(value, index) {
-
-          sheet_row <- my_df$sheet_row[index]
-
-          cur_val <- ifelse(is.na(value), "", value)
-
-          tagList(
-
+      columns = list(
+        Item = colDef(
+          name = "Item",
+          headerStyle = list(fontWeight = "bold"),
+          minWidth = 180,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
+            cur_val <- if (is.null(value) || is.na(value)) "" else as.character(value)
             tags$input(
               type = "text",
               value = cur_val,
-              placeholder = "https://...",
-
-              onblur = sprintf(
-                "Shiny.setInputValue(
-                  'my_edit',
-                  {
-                    row:%d,
-                    col:'Link',
-                    value:this.value
-                  },
-                  {priority:'event'}
-                )",
-                sheet_row
-              ),
-
+              placeholder = "Item name...",
+              onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Item', value: this.value}, {priority: 'event'})", row_id),
               class = "form-control",
-
-              style = "display:inline-block;width:calc(100% - 35px);"
-            ),
-
-            if (nzchar(cur_val)) {
-
-              tags$a(
-                href = cur_val,
-                target = "_blank",
-                rel = "noopener noreferrer",
-                icon("external-link-alt"),
-                style = "margin-left:6px;"
-              )
-
-            }
-          )
-        }
-      ),
-
-
-      sheet_row = colDef(
-        name = "",
-        sortable = FALSE,
-        filterable = FALSE,
-        width = 85,
-
-        cell = function(value) {
-
-          tags$button(
-            onclick = sprintf(
-              "Shiny.setInputValue(
-                'delete_my_row',
-                {
-                  row:%d,
-                  nonce:Math.random()
-                },
-                {priority:'event'}
-              )",
-              value
-            ),
-
-            class = "btn btn-danger btn-sm",
-            icon("trash"),
-            " Delete"
-          )
-        }
+              style = "padding: 4px 6px; font-size: 13px; font-weight: bold; width: 100%;"
+            )
+          }
+        ),
+        Size = colDef(
+          name = "Size / Options",
+          minWidth = 120,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
+            cur_val <- if (is.null(value) || is.na(value)) "" else as.character(value)
+            tags$input(
+              type = "text",
+              value = cur_val,
+              placeholder = "e.g. Medium",
+              onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Size', value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = "padding: 4px 6px; font-size: 13px; width: 100%;"
+            )
+          }
+        ),
+        Link = colDef(
+          name = "Link",
+          minWidth = 200,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
+            cur_val <- if (is.null(value) || is.na(value)) "" else as.character(value)
+            tagList(
+              tags$input(
+                type = "text",
+                value = cur_val,
+                placeholder = "https://...",
+                onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Link', value: this.value}, {priority: 'event'})", row_id),
+                class = "form-control",
+                style = "padding: 4px 6px; font-size: 13px; display: inline-block; width: calc(100% - 36px);"
+              ),
+              if (nzchar(cur_val)) {
+                tags$a(
+                  href = cur_val, target = "_blank", rel = "noopener noreferrer",
+                  icon("external-link-alt"),
+                  style = "margin-left: 6px; vertical-align: middle;"
+                )
+              }
+            )
+          }
+        ),
+        row_id = colDef(
+          name = "",
+          sortable = FALSE,
+          filterable = FALSE,
+          width = 85,
+          cell = function(value) {
+            tags$button(
+              onclick = sprintf("Shiny.setInputValue('delete_my_row', {row: %d, nonce: Math.random()}, {priority: 'event'})", value),
+              class = "btn btn-danger btn-sm",
+              style = "padding: 2px 8px; font-size: 12px;",
+              icon("trash"), " Delete"
+            )
+          }
+        )
       )
     )
-  )
-})
-
-
-# Save individual cell edits
-observeEvent(input$my_edit, {
-
-  info <- input$my_edit
-
-  req(
-    info$row,
-    info$col,
-    !is.null(info$value)
-  )
-
-
-  row_idx <- as.integer(info$row)
-  col <- as.character(info$col)
-
-  validate(
-    need(
-      col %in% c("Item", "Size", "Link"),
-      "Invalid column"
-    )
-  )
-
-
-  new_val <- if (nzchar(info$value)) {
-    info$value
-  } else {
-    NA_character_
-  }
-
-
-  cell_col <- col_letter(local_df(), col)
-
-
-  tryCatch({
-
-    range_write(
-      ss = sheet_url,
-
-      data = data.frame(
-        x = new_val,
-        stringsAsFactors = FALSE
-      ),
-
-      sheet = "WishLists",
-
-      range = paste0(
-        cell_col,
-        row_idx
-      ),
-
-      col_names = FALSE,
-      reformat = FALSE
-    )
-
-
-    showNotification(
-      "Saved",
-      type = "message",
-      duration = 2
-    )
-
-
-  }, error = function(e) {
-
-    showNotification(
-      paste(
-        "Error saving edit:",
-        e$message
-      ),
-      type = "error",
-      duration = 10
-    )
-
   })
 
-})
+  # Listen to inline edits on My Wish List
+  observeEvent(input$my_edit, {
+    info <- input$my_edit
+    df <- local_df()
+    req(df, info$row, info$col, !is.null(info$value))
+
+    row_idx <- as.integer(info$row)
+    col <- as.character(info$col)
+
+    if (row_idx >= 1 && row_idx <= nrow(df) && col %in% c("Item", "Size", "Link")) {
+      new_val <- if (nzchar(info$value)) info$value else NA_character_
+      df[[col]][row_idx] <- new_val
+      local_df(df)
+
+      # Write only this single cell immediately, rather than waiting for a
+      # "Save Changes" click that would rewrite the whole sheet.
+      sheet_row <- row_idx + 1
+      cell_col <- col_letter(df, col)
+
+      tryCatch({
+        range_write(
+          ss = sheet_url,
+          data = data.frame(x = new_val, stringsAsFactors = FALSE),
+          sheet = "WishLists",
+          range = paste0(cell_col, sheet_row),
+          col_names = FALSE,
+          reformat = FALSE
+        )
+      }, error = function(e) {
+        showNotification(paste("Error saving edit:", e$message),
+                         type = "error", duration = 10)
+      })
+    }
+  })
 
   # Store the pending delete row index
   pending_delete_row <- reactiveVal(NULL)
