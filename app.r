@@ -702,7 +702,6 @@ server <- function(input, output, session) {
       filterable = FALSE,
       searchable = FALSE,
       striped = TRUE,
-      defaultRowHeight = 60,
       highlight = TRUE,
       bordered = TRUE,
       defaultColDef = colDef(
