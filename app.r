@@ -451,7 +451,7 @@ server <- function(input, output, session) {
 
     allowed_names <- get_allowed_names(user, names)
     other_names <- setdiff(allowed_names, user)
-    if (length(other_names) == 0) other_names <- setdiff(names, users)
+    if (length(other_names) == 0) other_names <- setdiff(names, user)
 
     current_sel <- isolate(input$selected_other)
     selected_val <- if (!is.null(current_sel) && current_sel %in% other_names) current_sel else other_names[1]
