@@ -1072,7 +1072,7 @@ server <- function(input, output, session) {
     allowed_names <- get_allowed_names(rv$current_user, available_names())
     req(input$selected_other %in% allowed_names)
     count <- sum(df$Name == input$selected_other & (is.na(df$`Entered By`) | df$`Entered By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
-    valueBox(count, paste("Total Items for", input$selected_other), icon = icon("gift"), color = "teal")
+    valueBox(count, paste("Total Items Bought for", input$selected_other), icon = icon("gift"), color = "teal")
   })
 
   # Tab 2: Other Person Bought Count Box
