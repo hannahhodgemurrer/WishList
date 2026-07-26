@@ -1221,38 +1221,188 @@ new_value <- as.character(new_value)
 
 
 })
-  # Step 2: Perform deletion after confirmation
-  observeEvent(input$confirm_delete, {
-    row_idx <- pending_delete_row()
-    df <- local_df()
-    req(df, row_idx)
+ # ============================================================
+# Delete Wish List Row
+# ============================================================
 
-    if (row_idx >= 1 && row_idx <= nrow(df)) {
-      sheet_row <- row_idx + 1  # +1 for header row
-      n_cols <- ncol(df)
-      last_col <- LETTERS[n_cols]
 
-      # Delete just this one sheet row (shifting rows below it up), rather
-      # than clearing and rewriting the entire table.
-      tryCatch({
-        range_delete(
-          ss = sheet_url,
-          sheet = "WishLists",
-          range = paste0("A", sheet_row, ":", last_col, sheet_row),
-          shift = "up"
+# Stores the row waiting for confirmation
+pending_delete_row <- reactiveVal(NULL)
+
+
+
+# ------------------------------------------------------------
+# Step 1: User clicks Delete button
+# ------------------------------------------------------------
+
+observeEvent(input$delete_my_row, {
+
+
+  req(
+    input$delete_my_row$row
+  )
+
+
+  pending_delete_row(
+    as.integer(input$delete_my_row$row)
+  )
+
+
+  showModal(
+
+    modalDialog(
+
+      title = "Confirm Delete",
+
+      "Are you sure you want to delete this item?",
+
+
+      footer = tagList(
+
+        modalButton(
+          "Cancel"
+        ),
+
+
+        actionButton(
+
+          "confirm_delete",
+
+          "Delete",
+
+          class = "btn btn-danger"
+
         )
-        pending_delete_row(NULL)
-        removeModal()
-        showNotification("Row deleted", type = "message")
-        # Re-fetch: deleting shifted every row below it up by one, so
-        # in-memory row indices (which drive row_id in the tables) must
-        # realign with the sheet's new row numbers.
-        local_df(fetch_sheet_data())
-      }, error = function(e) {
-        showNotification(paste("Error deleting row:", e$message), type = "error", duration = 10)
-      })
-    }
+
+      ),
+
+      easyClose = TRUE
+
+    )
+
+  )
+
+})
+
+
+
+
+# ------------------------------------------------------------
+# Step 2: Confirm deletion
+# ------------------------------------------------------------
+
+observeEvent(input$confirm_delete, {
+
+
+  row_idx <- pending_delete_row()
+
+
+  df <- local_df()
+
+
+  req(
+    df,
+    row_idx
+  )
+
+
+  tryCatch({
+
+
+    # Google Sheets has a header row
+    sheet_row <- row_idx + 1
+
+
+
+    # Last used column
+    last_col <- int2col(
+      ncol(df)
+    )
+
+
+
+    delete_range <- paste0(
+
+      "A",
+
+      sheet_row,
+
+      ":",
+
+      last_col,
+
+      sheet_row
+
+    )
+
+
+
+    range_delete(
+
+      ss = sheet_url,
+
+      sheet = "WishLists",
+
+      range = delete_range,
+
+      shift = "up"
+
+    )
+
+
+
+    # Clear pending state
+    pending_delete_row(NULL)
+
+
+
+    removeModal()
+
+
+
+    showNotification(
+
+      "Row deleted",
+
+      type = "message"
+
+    )
+
+
+
+    # Reload data because rows shifted upward
+    local_df(
+      fetch_sheet_data()
+    )
+
+
+  },
+
+
+  error = function(e) {
+
+
+    showNotification(
+
+      paste(
+
+        "Error deleting row:",
+
+        e$message
+
+      ),
+
+      type = "error",
+
+      duration = 10
+
+    )
+
+
   })
+
+
+})
 
   # Tab 1: My Item Count Box
   output$my_item_count <- renderValueBox({
