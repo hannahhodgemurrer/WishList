@@ -1174,8 +1174,7 @@ observeEvent(input$save_my_edits, {
 
 
       # update local memory
-      df[row_id, col_name] <- new_value
-
+new_value <- as.character(new_value)
 
     }
 
