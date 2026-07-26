@@ -1030,7 +1030,7 @@ server <- function(input, output, session) {
     names_choices <- allowed_names
 
     reactable(
-      others_df %>% select(Item, Size, Link, Bought, `Who Bought`, `Entered By`),
+      others_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
       pagination = FALSE,
       wrap = TRUE,
       filterable = TRUE,
@@ -1051,24 +1051,34 @@ server <- function(input, output, session) {
         Item = colDef(
           headerStyle = list(fontWeight = "bold"),
           style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
-          cell = function(value) {
-            tags$div(
-              style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
-              value
-            )
+          cell = function(value, index) {
+            link_url <- others_df$Link[index]
+            has_link <- !is.na(link_url) && nzchar(trimws(as.character(link_url)))
+
+            if (has_link) {
+              url <- trimws(as.character(link_url))
+              if (!grepl("^https?://", url, ignore.case = TRUE)) {
+                url <- paste0("https://", url)
+              }
+              tags$a(
+                href = url,
+                target = "_blank",
+                rel = "noopener noreferrer",
+                style = "color: #3c8dbc; font-weight: bold; text-decoration: underline; white-space: pre-wrap; word-break: break-word;",
+                value,
+                " ",
+                icon("external-link-alt", style = "font-size: 11px; margin-left: 3px; vertical-align: baseline;")
+              )
+            } else {
+              tags$div(
+                style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
+                value
+              )
+            }
           }
         ),
         Size = colDef(
           style = list(whiteSpace = "pre-wrap", wordBreak = "break-word")
-        ),
-        Link = colDef(
-          cell = function(value) {
-            if (!is.na(value) && nzchar(value)) {
-              tags$a(href = value, target = "_blank", rel = "noopener noreferrer", "View Link")
-            } else {
-              "\u2014"
-            }
-          }
         ),
         Bought = colDef(
           name = "Bought?",
