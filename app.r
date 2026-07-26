@@ -10,8 +10,8 @@ library(sodium)
 library(rsconnect)
 # Google Sheet URL
 sheet_url <- "https://docs.google.com/spreadsheets/d/1Sjx9ETDXCIeTnuDJ_aUokqzt-mOfGyKg_HTljzunkOc/edit?gid=1726487847#gid=1726487847"
-###use locally
-#gs4_auth(path = "service-account.json")
+### use locally
+# gs4_auth(path = "service-account.json")
 
 library(jsonlite)
 
@@ -30,7 +30,7 @@ gs4_auth(path = service_account)
 col_letter <- function(df, colname) {
   idx <- which(names(df) == colname)
   if (length(idx) == 0) stop(paste("Column not found:", colname))
-  LETTERS[idx]  # works up to column Z; fine for this sheet's width
+  LETTERS[idx] # works up to column Z; fine for this sheet's width
 }
 
 # Helper for password input with show/hide eye toggle
@@ -66,7 +66,6 @@ ui <- fluidPage(
 
 # ─── SERVER ──────────────────────────────────────────────────────────────────
 server <- function(input, output, session) {
-
   # ── Auth state ───────────────────────────────────────────────────────────
   rv <- reactiveValues(
     logged_in    = FALSE,
@@ -77,21 +76,25 @@ server <- function(input, output, session) {
   users_df <- reactiveVal(NULL)
 
   observe({
-    tryCatch({
-      df <- read_sheet(sheet_url, sheet = "PassCodes")
-      # Ensure PasswordHash column exists
-      if (!"PasswordHash" %in% names(df)) {
-        df$PasswordHash <- NA_character_
-      } else {
-        df$PasswordHash <- as.character(df$PasswordHash)
-        df$PasswordHash[!nzchar(df$PasswordHash)] <- NA_character_
+    tryCatch(
+      {
+        df <- read_sheet(sheet_url, sheet = "PassCodes")
+        # Ensure PasswordHash column exists
+        if (!"PasswordHash" %in% names(df)) {
+          df$PasswordHash <- NA_character_
+        } else {
+          df$PasswordHash <- as.character(df$PasswordHash)
+          df$PasswordHash[!nzchar(df$PasswordHash)] <- NA_character_
+        }
+        users_df(df)
+      },
+      error = function(e) {
+        showNotification(paste("Could not load PassCodes sheet:", e$message),
+          type = "error", duration = 10
+        )
       }
-      users_df(df)
-    }, error = function(e) {
-      showNotification(paste("Could not load PassCodes sheet:", e$message),
-                       type = "error", duration = 10)
-    })
-  }) |> bindEvent(TRUE, once = TRUE)  # run once at startup
+    )
+  }) |> bindEvent(TRUE, once = TRUE) # run once at startup
 
   # ── Main page router ────────────────────────────────────────────────────
   output$page_ui <- renderUI({
@@ -123,7 +126,8 @@ server <- function(input, output, session) {
         h2("Wish List Login", style = "text-align:center; color:#605ca8;"),
         hr(),
         selectInput("login_user", "Select your name",
-                    choices = sort(unique(na.omit(udf$Name)))),
+          choices = sort(unique(na.omit(udf$Name)))
+        ),
         uiOutput("login_fields"),
         br(),
         uiOutput("login_message")
@@ -143,18 +147,20 @@ server <- function(input, output, session) {
       tagList(
         showablePasswordInput("pw", "Password"),
         actionButton("login_btn", "Log In",
-                     icon = icon("sign-in-alt"),
-                     class = "btn-primary btn-block",
-                     style = "width:100%;")
+          icon = icon("sign-in-alt"),
+          class = "btn-primary btn-block",
+          style = "width:100%;"
+        )
       )
     } else {
       tagList(
         showablePasswordInput("new_pw", "Create Password"),
         showablePasswordInput("confirm_pw", "Confirm Password"),
         actionButton("create_btn", "Create Account",
-                     icon = icon("user-plus"),
-                     class = "btn-success btn-block",
-                     style = "width:100%;")
+          icon = icon("user-plus"),
+          class = "btn-success btn-block",
+          style = "width:100%;"
+        )
       )
     }
   })
@@ -189,23 +195,27 @@ server <- function(input, output, session) {
     # Persist only this user's PasswordHash cell to the Google Sheet, rather
     # than rewriting the whole PassCodes sheet — avoids wiping out another
     # user's password if they saved between when this session loaded and now.
-    sheet_row <- row_idx + 1  # +1 for header row
+    sheet_row <- row_idx + 1 # +1 for header row
     pw_col <- col_letter(udf, "PasswordHash")
 
-    tryCatch({
-      range_write(
-        ss    = sheet_url,
-        data  = data.frame(x = hash, stringsAsFactors = FALSE),
-        sheet = "PassCodes",
-        range = paste0(pw_col, sheet_row),
-        col_names = FALSE,
-        reformat  = FALSE
-      )
-      showNotification("Password created! You can now log in.", type = "message")
-    }, error = function(e) {
-      showNotification(paste("Error saving password:", e$message),
-                       type = "error", duration = 10)
-    })
+    tryCatch(
+      {
+        range_write(
+          ss = sheet_url,
+          data = data.frame(x = hash, stringsAsFactors = FALSE),
+          sheet = "PassCodes",
+          range = paste0(pw_col, sheet_row),
+          col_names = FALSE,
+          reformat = FALSE
+        )
+        showNotification("Password created! You can now log in.", type = "message")
+      },
+      error = function(e) {
+        showNotification(paste("Error saving password:", e$message),
+          type = "error", duration = 10
+        )
+      }
+    )
   })
 
   # ── Log in ──────────────────────────────────────────────────────────────
@@ -223,7 +233,7 @@ server <- function(input, output, session) {
     }
 
     if (password_verify(row$PasswordHash[1], input$pw)) {
-      rv$logged_in    <- TRUE
+      rv$logged_in <- TRUE
       rv$current_user <- input$login_user
     } else {
       output$login_message <- renderUI(
@@ -241,7 +251,6 @@ server <- function(input, output, session) {
     dashboardPage(
       skin = "purple",
       dashboardHeader(title = "Wish Lists"),
-
       dashboardSidebar(
         sidebarMenu(
           menuItem("My Wish List", tabName = "my_list", icon = icon("user")),
@@ -251,14 +260,17 @@ server <- function(input, output, session) {
         div(
           style = "padding: 10px;",
           h4(paste("Logged in as:", rv$current_user), style = "color:white;"),
-          actionButton("refresh", "Refresh Data", icon = icon("sync"),
-                       class = "btn-primary", style = "width: 100%; margin-top: 10px;"),
+          actionButton("refresh", "Refresh Data",
+            icon = icon("sync"),
+            class = "btn-primary", style = "width: 100%; margin-top: 10px;"
+          ),
           br(), br(),
-          actionButton("logout_btn", "Log Out", icon = icon("sign-out-alt"),
-                       class = "btn-default", style = "width: 100%;")
+          actionButton("logout_btn", "Log Out",
+            icon = icon("sign-out-alt"),
+            class = "btn-default", style = "width: 100%;"
+          )
         )
       ),
-
       dashboardBody(
         tabItems(
           # Tab 1: My Wish List
@@ -360,7 +372,7 @@ server <- function(input, output, session) {
 
   # ── Log out ─────────────────────────────────────────────────────────────
   observeEvent(input$logout_btn, {
-    rv$logged_in    <- FALSE
+    rv$logged_in <- FALSE
     rv$current_user <- NULL
   })
 
@@ -415,16 +427,22 @@ server <- function(input, output, session) {
   })
 
   # Define group memberships
-  group_1_members <- c("Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
-                       "Sara", "Charlie", "Emma", "Michael", "Ethan", "Violet", "Pepper", "Mark",
-                       "Dixie", "Wrenley", "Dixie/Wrenley", "Dixie / Wrenley")
+  group_1_members <- c(
+    "Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
+    "Sara", "Charlie", "Emma", "Michael", "Ethan", "Violet", "Pepper", "Mark",
+    "Dixie", "Wrenley", "Dixie/Wrenley", "Dixie / Wrenley"
+  )
 
-  group_2_members <- c("Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
-                       "Kim", "Rob", "Jackie", "Nick", "Sal")
+  group_2_members <- c(
+    "Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
+    "Kim", "Rob", "Jackie", "Nick", "Sal"
+  )
 
   # Filter available names based on currently logged in user's group(s)
   get_allowed_names <- function(current_user, names_vec) {
-    if (is.null(current_user) || !nzchar(current_user)) return(names_vec)
+    if (is.null(current_user) || !nzchar(current_user)) {
+      return(names_vec)
+    }
 
     allowed <- character(0)
 
@@ -436,7 +454,9 @@ server <- function(input, output, session) {
       allowed <- c(allowed, group_2_members)
     }
 
-    if (length(allowed) == 0) return(names_vec)
+    if (length(allowed) == 0) {
+      return(names_vec)
+    }
 
     allowed_clean <- unique(allowed)
     matched_names <- names_vec[tolower(names_vec) %in% tolower(allowed_clean)]
@@ -484,21 +504,25 @@ server <- function(input, output, session) {
       # one person's save from clobbering another person's concurrent edits.
       sheet_row <- row_idx + 1
       col_start <- col_letter(df, "Bought")
-      col_end   <- col_letter(df, "Who Bought")
+      col_end <- col_letter(df, "Who Bought")
 
-      tryCatch({
-        range_write(
-          ss = sheet_url,
-          data = df[row_idx, c("Bought", "Who Bought")],
-          sheet = "WishLists",
-          range = paste0(col_start, sheet_row, ":", col_end, sheet_row),
-          col_names = FALSE,
-          reformat = FALSE
-        )
-      }, error = function(e) {
-        showNotification(paste("Error saving purchase status:", e$message),
-                         type = "error", duration = 10)
-      })
+      tryCatch(
+        {
+          range_write(
+            ss = sheet_url,
+            data = df[row_idx, c("Bought", "Who Bought")],
+            sheet = "WishLists",
+            range = paste0(col_start, sheet_row, ":", col_end, sheet_row),
+            col_names = FALSE,
+            reformat = FALSE
+          )
+        },
+        error = function(e) {
+          showNotification(paste("Error saving purchase status:", e$message),
+            type = "error", duration = 10
+          )
+        }
+      )
     }
   })
 
@@ -522,21 +546,25 @@ server <- function(input, output, session) {
       # Write only this row's Bought/Who Bought cells immediately.
       sheet_row <- row_idx + 1
       col_start <- col_letter(df, "Bought")
-      col_end   <- col_letter(df, "Who Bought")
+      col_end <- col_letter(df, "Who Bought")
 
-      tryCatch({
-        range_write(
-          ss = sheet_url,
-          data = df[row_idx, c("Bought", "Who Bought")],
-          sheet = "WishLists",
-          range = paste0(col_start, sheet_row, ":", col_end, sheet_row),
-          col_names = FALSE,
-          reformat = FALSE
-        )
-      }, error = function(e) {
-        showNotification(paste("Error saving buyer:", e$message),
-                         type = "error", duration = 10)
-      })
+      tryCatch(
+        {
+          range_write(
+            ss = sheet_url,
+            data = df[row_idx, c("Bought", "Who Bought")],
+            sheet = "WishLists",
+            range = paste0(col_start, sheet_row, ":", col_end, sheet_row),
+            col_names = FALSE,
+            reformat = FALSE
+          )
+        },
+        error = function(e) {
+          showNotification(paste("Error saving buyer:", e$message),
+            type = "error", duration = 10
+          )
+        }
+      )
     }
   })
 
@@ -565,24 +593,26 @@ server <- function(input, output, session) {
       stringsAsFactors = FALSE
     )
 
-    tryCatch({
-      sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
-      showNotification(paste("Successfully added", item_name), type = "message")
+    tryCatch(
+      {
+        sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
+        showNotification(paste("Successfully added", item_name), type = "message")
 
-      updateTextInput(session, "add_item", value = "")
-      updateTextInput(session, "add_size", value = "")
-      updateTextInput(session, "add_link", value = "")
+        updateTextInput(session, "add_item", value = "")
+        updateTextInput(session, "add_size", value = "")
+        updateTextInput(session, "add_link", value = "")
 
-      # Re-fetch dataset
-      local_df(fetch_sheet_data())
-
-    }, error = function(e) {
-      showNotification(
-        paste("Write error:", e$message),
-        type = "error",
-        duration = 10
-      )
-    })
+        # Re-fetch dataset
+        local_df(fetch_sheet_data())
+      },
+      error = function(e) {
+        showNotification(
+          paste("Write error:", e$message),
+          type = "error",
+          duration = 10
+        )
+      }
+    )
   })
 
   # Dynamic button label for adding item on others wish list tab
@@ -616,24 +646,26 @@ server <- function(input, output, session) {
       stringsAsFactors = FALSE
     )
 
-    tryCatch({
-      sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
-      showNotification(paste("Successfully added", item_name, "for", input$selected_other, "!"), type = "message")
+    tryCatch(
+      {
+        sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
+        showNotification(paste("Successfully added", item_name, "for", input$selected_other, "!"), type = "message")
 
-      updateTextInput(session, "add_other_item", value = "")
-      updateTextInput(session, "add_other_size", value = "")
-      updateTextInput(session, "add_other_link", value = "")
+        updateTextInput(session, "add_other_item", value = "")
+        updateTextInput(session, "add_other_size", value = "")
+        updateTextInput(session, "add_other_link", value = "")
 
-      # Re-fetch dataset
-      local_df(fetch_sheet_data())
-
-    }, error = function(e) {
-      showNotification(
-        paste("Write error:", e$message),
-        type = "error",
-        duration = 10
-      )
-    })
+        # Re-fetch dataset
+        local_df(fetch_sheet_data())
+      },
+      error = function(e) {
+        showNotification(
+          paste("Write error:", e$message),
+          type = "error",
+          duration = 10
+        )
+      }
+    )
   })
 
   # "Save Updates" button: Bought/Who Bought changes now save immediately
@@ -644,125 +676,96 @@ server <- function(input, output, session) {
     local_df(fetch_sheet_data())
     showNotification("Refreshed with latest data", type = "message")
   })
-# ============================================================
-# Helper: Convert column number to Google Sheets column letter
-# ============================================================
+  # ============================================================
+  # Helper: Convert column number to Google Sheets column letter
+  # ============================================================
 
-int2col <- function(n) {
+  int2col <- function(n) {
+    letters <- ""
 
-  letters <- ""
+    while (n > 0) {
+      r <- (n - 1) %% 26
 
-  while (n > 0) {
+      letters <- paste0(
+        LETTERS[r + 1],
+        letters
+      )
 
-    r <- (n - 1) %% 26
+      n <- floor((n - r) / 26)
+    }
 
-    letters <- paste0(
-      LETTERS[r + 1],
-      letters
-    )
-
-    n <- floor((n - r) / 26)
+    letters
   }
 
-  letters
-}
 
+  # ============================================================
+  # Tab 1: My Wish List Table (editable)
+  # ============================================================
 
+  output$my_wishlist_table <- renderReactable({
+    df <- local_df()
 
-# ============================================================
-# Tab 1: My Wish List Table (editable)
-# ============================================================
-
-output$my_wishlist_table <- renderReactable({
-
-  df <- local_df()
-
-  req(
-    df,
-    rv$current_user
-  )
-
-
-  my_df <- df %>%
-    mutate(
-      row_id = row_number()
-    ) %>%
-    filter(
-      Name == rv$current_user &
-        (
-          is.na(`Entered By`) |
-            `Entered By` == rv$current_user
-        )
-    ) %>%
-    arrange(
-      tolower(ifelse(is.na(Item), "", Item))
+    req(
+      df,
+      rv$current_user
     )
 
 
-  reactable(
-
-    my_df %>%
-      select(
-        Item,
-        Size,
-        Link,
-        row_id
-      ),
-
-
-    pagination = FALSE,
-
-    wrap = TRUE,
-
-    filterable = FALSE,
-
-    searchable = FALSE,
-
-    striped = TRUE,
-
-    highlight = TRUE,
-
-    bordered = TRUE,
-
-
-    columns = list(
-
-
-      Item = colDef(
-
-        name = "Item",
-
-        headerStyle = list(
-          fontWeight = "bold"
-        ),
-
-        minWidth = 180,
-
-
-        cell = function(value, index) {
-
-
-          row_id <- my_df$row_id[index]
-
-
-          cur_val <- ifelse(
-            is.na(value),
-            "",
-            as.character(value)
+    my_df <- df %>%
+      mutate(
+        row_id = row_number()
+      ) %>%
+      filter(
+        Name == rv$current_user &
+          (
+            is.na(`Entered By`) |
+              `Entered By` == rv$current_user
           )
+      ) %>%
+      arrange(
+        tolower(ifelse(is.na(Item), "", Item))
+      )
 
 
-          tags$input(
+    reactable(
+      my_df %>%
+        select(
+          Item,
+          Size,
+          Link,
+          row_id
+        ),
+      pagination = FALSE,
+      wrap = TRUE,
+      filterable = FALSE,
+      searchable = FALSE,
+      striped = TRUE,
+      highlight = TRUE,
+      bordered = TRUE,
+      columns = list(
+        Item = colDef(
+          name = "Item",
+          headerStyle = list(
+            fontWeight = "bold"
+          ),
+          minWidth = 180,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
 
-            type = "text",
 
-            value = cur_val,
+            cur_val <- ifelse(
+              is.na(value),
+              "",
+              as.character(value)
+            )
 
-            placeholder = "Item name...",
 
-
-            onblur = sprintf(
-              "Shiny.setInputValue(
+            tags$input(
+              type = "text",
+              value = cur_val,
+              placeholder = "Item name...",
+              onblur = sprintf(
+                "Shiny.setInputValue(
                 'my_edit',
                 {
                   row:%d,
@@ -771,63 +774,41 @@ output$my_wishlist_table <- renderReactable({
                 },
                 {priority:'event'}
               )",
-              row_id
-            ),
-
-
-            onkeydown =
-              "event.stopPropagation();",
-
-            onclick =
-              "event.stopPropagation();",
-
-
-            class = "form-control",
-
-
-            style =
-              "padding:4px 6px;
+                row_id
+              ),
+              onkeydown =
+                "event.stopPropagation();",
+              onclick =
+                "event.stopPropagation();",
+              class = "form-control",
+              style =
+                "padding:4px 6px;
                font-size:13px;
                font-weight:bold;
                width:100%;"
-          )
-
-        }
-      ),
-
-
-
-      Size = colDef(
-
-        name = "Size / Options",
-
-        minWidth = 120,
+            )
+          }
+        ),
+        Size = colDef(
+          name = "Size / Options",
+          minWidth = 120,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
 
 
-        cell = function(value, index) {
+            cur_val <- ifelse(
+              is.na(value),
+              "",
+              as.character(value)
+            )
 
 
-          row_id <- my_df$row_id[index]
-
-
-          cur_val <- ifelse(
-            is.na(value),
-            "",
-            as.character(value)
-          )
-
-
-          tags$input(
-
-            type = "text",
-
-            value = cur_val,
-
-            placeholder = "e.g. Medium",
-
-
-            onblur = sprintf(
-              "Shiny.setInputValue(
+            tags$input(
+              type = "text",
+              value = cur_val,
+              placeholder = "e.g. Medium",
+              onblur = sprintf(
+                "Shiny.setInputValue(
                 'my_edit',
                 {
                   row:%d,
@@ -836,65 +817,41 @@ output$my_wishlist_table <- renderReactable({
                 },
                 {priority:'event'}
               )",
-              row_id
-            ),
-
-
-            onkeydown =
-              "event.stopPropagation();",
-
-            onclick =
-              "event.stopPropagation();",
-
-
-            class = "form-control",
-
-
-            style =
-              "padding:4px 6px;
+                row_id
+              ),
+              onkeydown =
+                "event.stopPropagation();",
+              onclick =
+                "event.stopPropagation();",
+              class = "form-control",
+              style =
+                "padding:4px 6px;
                font-size:13px;
                width:100%;"
-          )
-
-        }
-      ),
-
-
-
-      Link = colDef(
-
-        name = "Link",
-
-        minWidth = 220,
+            )
+          }
+        ),
+        Link = colDef(
+          name = "Link",
+          minWidth = 220,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
 
 
-        cell = function(value, index) {
+            cur_val <- ifelse(
+              is.na(value),
+              "",
+              as.character(value)
+            )
 
 
-          row_id <- my_df$row_id[index]
-
-
-          cur_val <- ifelse(
-            is.na(value),
-            "",
-            as.character(value)
-          )
-
-
-          tagList(
-
-
-            tags$input(
-
-              type = "text",
-
-              value = cur_val,
-
-              placeholder = "https://...",
-
-
-              onblur = sprintf(
-                "Shiny.setInputValue(
+            tagList(
+              tags$input(
+                type = "text",
+                value = cur_val,
+                placeholder = "https://...",
+                onblur = sprintf(
+                  "Shiny.setInputValue(
                   'my_edit',
                   {
                     row:%d,
@@ -903,75 +860,42 @@ output$my_wishlist_table <- renderReactable({
                   },
                   {priority:'event'}
                 )",
-                row_id
-              ),
-
-
-              onkeydown =
-                "event.stopPropagation();",
-
-              onclick =
-                "event.stopPropagation();",
-
-
-              class = "form-control",
-
-
-              style =
-                "padding:4px 6px;
+                  row_id
+                ),
+                onkeydown =
+                  "event.stopPropagation();",
+                onclick =
+                  "event.stopPropagation();",
+                class = "form-control",
+                style =
+                  "padding:4px 6px;
                  font-size:13px;
                  display:inline-block;
                  width:calc(100%% - 36px);"
-
-            ),
-
-
-
-            if (nzchar(cur_val)) {
-
-              tags$a(
-
-                href = cur_val,
-
-                target = "_blank",
-
-                rel = "noopener noreferrer",
-
-                icon("external-link-alt"),
-
-                style =
-                  "margin-left:6px;
+              ),
+              if (nzchar(cur_val)) {
+                tags$a(
+                  href = cur_val,
+                  target = "_blank",
+                  rel = "noopener noreferrer",
+                  icon("external-link-alt"),
+                  style =
+                    "margin-left:6px;
                    vertical-align:middle;"
-              )
-
-            }
-
-          )
-
-        }
-
-      ),
-
-
-
-      row_id = colDef(
-
-        name = "",
-
-        sortable = FALSE,
-
-        filterable = FALSE,
-
-        width = 85,
-
-
-        cell = function(value) {
-
-
-          tags$button(
-
-            onclick = sprintf(
-              "Shiny.setInputValue(
+                )
+              }
+            )
+          }
+        ),
+        row_id = colDef(
+          name = "",
+          sortable = FALSE,
+          filterable = FALSE,
+          width = 85,
+          cell = function(value) {
+            tags$button(
+              onclick = sprintf(
+                "Shiny.setInputValue(
                 'delete_my_row',
                 {
                   row:%d,
@@ -979,430 +903,289 @@ output$my_wishlist_table <- renderReactable({
                 },
                 {priority:'event'}
               )",
-              value
-            ),
-
-
-            class = "btn btn-danger btn-sm",
-
-
-            style =
-              "padding:2px 8px;
+                value
+              ),
+              class = "btn btn-danger btn-sm",
+              style =
+                "padding:2px 8px;
                font-size:12px;",
+              icon("trash"),
+              " Delete"
+            )
+          }
+        )
+      )
+    )
+  })
 
 
-            icon("trash"),
+  # ============================================================
+  # Capture edits without refreshing table
+  # ============================================================
 
-            " Delete"
+  observeEvent(input$my_edit, {
+    info <- input$my_edit
 
-          )
 
-        }
+    req(
+      info$row,
+      info$col,
+      !is.null(info$value)
+    )
 
+
+    if (info$col %in% c(
+      "Item",
+      "Size",
+      "Link"
+    )) {
+      if (is.null(rv$my_edits)) {
+        rv$my_edits <- list()
+      }
+
+
+      key <- paste(
+        as.integer(info$row),
+        info$col,
+        sep = "_"
       )
 
-    )
 
-  )
-
-})
-
-
-
-
-
-# ============================================================
-# Capture edits without refreshing table
-# ============================================================
-
-observeEvent(input$my_edit, {
-
-
-  info <- input$my_edit
-
-
-  req(
-    info$row,
-    info$col,
-    !is.null(info$value)
-  )
-
-
-
-  if (info$col %in% c(
-    "Item",
-    "Size",
-    "Link"
-  )) {
-
-
-    if (is.null(rv$my_edits)) {
-
-      rv$my_edits <- list()
-
+      rv$my_edits[[key]] <- info$value
     }
+  })
 
 
+  # ============================================================
+  # Save ONLY changed cells
+  # ============================================================
 
-    key <- paste(
-      as.integer(info$row),
-      info$col,
-      sep = "_"
+  observeEvent(input$save_my_edits, {
+    edits <- rv$my_edits
+
+
+    req(
+      edits,
+      length(edits) > 0
     )
 
 
-
-    rv$my_edits[[key]] <- info$value
-
-
-  }
+    tryCatch(
+      {
+        df <- local_df()
 
 
-})
+        for (key in names(edits)) {
+          parts <- strsplit(
+            key,
+            "_"
+          )[[1]]
 
 
+          row_id <- as.integer(parts[1])
+
+          col_name <- parts[2]
 
 
-
-# ============================================================
-# Save ONLY changed cells
-# ============================================================
-
-observeEvent(input$save_my_edits, {
+          col_num <- match(
+            col_name,
+            names(df)
+          )
 
 
-  edits <- rv$my_edits
+          req(
+            !is.na(col_num)
+          )
 
 
-  req(
-    edits,
-    length(edits) > 0
-  )
+          col_letter <- int2col(
+            col_num
+          )
 
 
+          # +1 because row 1 in Google Sheets is headers
+          sheet_cell <- paste0(
+            col_letter,
+            row_id + 1
+          )
+          new_value <- edits[[key]]
 
-  tryCatch({
 
+          if (!nzchar(new_value)) {
+            new_value <- NA_character_
+          }
+
+
+          print(
+            paste(
+              "Saving",
+              new_value,
+              "to",
+              sheet_cell
+            )
+          )
+
+
+          range_write(
+            ss = sheet_url,
+            sheet = "WishLists",
+            range = sheet_cell,
+            data = data.frame(
+              value = new_value
+            ),
+            col_names = FALSE,
+            reformat = FALSE
+          )
+
+
+          # update local memory
+          new_value <- as.character(new_value)
+        }
+
+
+        local_df(df)
+
+
+        rv$my_edits <- list()
+
+
+        showNotification(
+          "Saved changes",
+          type = "message"
+        )
+      },
+      error = function(e) {
+        showNotification(
+          paste(
+            "Error saving changes:",
+            e$message
+          ),
+          type = "error",
+          duration = 10
+        )
+      }
+    )
+  })
+  # ============================================================
+  # Delete Wish List Row
+  # ============================================================
+
+
+  # Stores the row waiting for confirmation
+  pending_delete_row <- reactiveVal(NULL)
+
+
+  # ------------------------------------------------------------
+  # Step 1: User clicks Delete button
+  # ------------------------------------------------------------
+
+  observeEvent(input$delete_my_row, {
+    req(
+      input$delete_my_row$row
+    )
+
+
+    pending_delete_row(
+      as.integer(input$delete_my_row$row)
+    )
+
+
+    showModal(
+      modalDialog(
+        title = "Confirm Delete",
+        "Are you sure you want to delete this item?",
+        footer = tagList(
+          modalButton(
+            "Cancel"
+          ),
+          actionButton(
+            "confirm_delete",
+            "Delete",
+            class = "btn btn-danger"
+          )
+        ),
+        easyClose = TRUE
+      )
+    )
+  })
+
+
+  # ------------------------------------------------------------
+  # Step 2: Confirm deletion
+  # ------------------------------------------------------------
+
+  observeEvent(input$confirm_delete, {
+    row_idx <- pending_delete_row()
 
 
     df <- local_df()
 
 
-
-    for (key in names(edits)) {
-
-
-      parts <- strsplit(
-        key,
-        "_"
-      )[[1]]
+    req(
+      df,
+      row_idx
+    )
 
 
-
-      row_id <- as.integer(parts[1])
-
-      col_name <- parts[2]
-
-
-
-      col_num <- match(
-        col_name,
-        names(df)
-      )
+    tryCatch(
+      {
+        # Google Sheets has a header row
+        sheet_row <- row_idx + 1
 
 
-      req(
-        !is.na(col_num)
-      )
+        # Last used column
+        last_col <- int2col(
+          ncol(df)
+        )
 
 
-
-      col_letter <- int2col(
-        col_num
-      )
-
-
-
-      # +1 because row 1 in Google Sheets is headers
-      sheet_cell <- paste0(
-        col_letter,
-        row_id + 1
-      )
+        delete_range <- paste0(
+          "A",
+          sheet_row,
+          ":",
+          last_col,
+          sheet_row
+        )
 
 
+        range_delete(
+          ss = sheet_url,
+          sheet = "WishLists",
+          range = delete_range,
+          shift = "up"
+        )
 
-      new_value <- edits[[key]]
+
+        # Clear pending state
+        pending_delete_row(NULL)
 
 
+        removeModal()
 
-      if (!nzchar(new_value)) {
 
-        new_value <- NA_character_
+        showNotification(
+          "Row deleted",
+          type = "message"
+        )
 
+
+        # Reload data because rows shifted upward
+        local_df(
+          fetch_sheet_data()
+        )
+      },
+      error = function(e) {
+        showNotification(
+          paste(
+            "Error deleting row:",
+            e$message
+          ),
+          type = "error",
+          duration = 10
+        )
       }
-
-
-
-      print(
-        paste(
-          "Saving",
-          new_value,
-          "to",
-          sheet_cell
-        )
-      )
-
-
-
-      range_write(
-
-        ss = sheet_url,
-
-        sheet = "WishLists",
-
-        range = sheet_cell,
-
-        data = data.frame(
-          value = new_value
-        ),
-
-        col_names = FALSE,
-
-        reformat = FALSE
-
-      )
-
-
-      # update local memory
-new_value <- as.character(new_value)
-
-    }
-
-
-
-    local_df(df)
-
-
-    rv$my_edits <- list()
-
-
-
-    showNotification(
-
-      "Saved changes",
-
-      type = "message"
-
     )
-
-
-
-  },
-
-
-  error = function(e) {
-
-
-    showNotification(
-
-      paste(
-        "Error saving changes:",
-        e$message
-      ),
-
-      type = "error",
-
-      duration = 10
-
-    )
-
-
   })
-
-
-})
- # ============================================================
-# Delete Wish List Row
-# ============================================================
-
-
-# Stores the row waiting for confirmation
-pending_delete_row <- reactiveVal(NULL)
-
-
-
-# ------------------------------------------------------------
-# Step 1: User clicks Delete button
-# ------------------------------------------------------------
-
-observeEvent(input$delete_my_row, {
-
-
-  req(
-    input$delete_my_row$row
-  )
-
-
-  pending_delete_row(
-    as.integer(input$delete_my_row$row)
-  )
-
-
-  showModal(
-
-    modalDialog(
-
-      title = "Confirm Delete",
-
-      "Are you sure you want to delete this item?",
-
-
-      footer = tagList(
-
-        modalButton(
-          "Cancel"
-        ),
-
-
-        actionButton(
-
-          "confirm_delete",
-
-          "Delete",
-
-          class = "btn btn-danger"
-
-        )
-
-      ),
-
-      easyClose = TRUE
-
-    )
-
-  )
-
-})
-
-
-
-
-# ------------------------------------------------------------
-# Step 2: Confirm deletion
-# ------------------------------------------------------------
-
-observeEvent(input$confirm_delete, {
-
-
-  row_idx <- pending_delete_row()
-
-
-  df <- local_df()
-
-
-  req(
-    df,
-    row_idx
-  )
-
-
-  tryCatch({
-
-
-    # Google Sheets has a header row
-    sheet_row <- row_idx + 1
-
-
-
-    # Last used column
-    last_col <- int2col(
-      ncol(df)
-    )
-
-
-
-    delete_range <- paste0(
-
-      "A",
-
-      sheet_row,
-
-      ":",
-
-      last_col,
-
-      sheet_row
-
-    )
-
-
-
-    range_delete(
-
-      ss = sheet_url,
-
-      sheet = "WishLists",
-
-      range = delete_range,
-
-      shift = "up"
-
-    )
-
-
-
-    # Clear pending state
-    pending_delete_row(NULL)
-
-
-
-    removeModal()
-
-
-
-    showNotification(
-
-      "Row deleted",
-
-      type = "message"
-
-    )
-
-
-
-    # Reload data because rows shifted upward
-    local_df(
-      fetch_sheet_data()
-    )
-
-
-  },
-
-
-  error = function(e) {
-
-
-    showNotification(
-
-      paste(
-
-        "Error deleting row:",
-
-        e$message
-
-      ),
-
-      type = "error",
-
-      duration = 10
-
-    )
-
-
-  })
-
-
-})
 
   # Tab 1: My Item Count Box
   output$my_item_count <- renderValueBox({
