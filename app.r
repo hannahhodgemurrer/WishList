@@ -389,11 +389,11 @@ server <- function(input, output, session) {
       df$`Who Bought` <- ifelse(is.na(df$`Who Bought`) | !nzchar(as.character(df$`Who Bought`)), NA_character_, as.character(df$`Who Bought`))
     }
 
-    # Ensure 'Added By' column exists
-    if (!"Added By" %in% names(df)) {
-      df$`Added By` <- NA_character_
+    # Ensure 'Entered By' column exists
+    if (!"Entered By" %in% names(df)) {
+      df$`Entered By` <- NA_character_
     } else {
-      df$`Added By` <- ifelse(is.na(df$`Added By`) | !nzchar(as.character(df$`Added By`)), NA_character_, as.character(df$`Added By`))
+      df$`Entered By` <- ifelse(is.na(df$`Entered By`) | !nzchar(as.character(df$`Entered By`)), NA_character_, as.character(df$`Entered By`))
     }
 
     df
@@ -560,7 +560,7 @@ server <- function(input, output, session) {
       Link = item_link,
       Bought = "No",
       `Who Bought` = NA_character_,
-      `Added By` = rv$current_user,
+      `Entered By` = rv$current_user,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -611,7 +611,7 @@ server <- function(input, output, session) {
       Link = item_link,
       Bought = "No",
       `Who Bought` = NA_character_,
-      `Added By` = rv$current_user,
+      `Entered By` = rv$current_user,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -651,7 +651,7 @@ server <- function(input, output, session) {
     req(df, rv$current_user)
     my_df <- df %>%
       mutate(row_id = row_number()) %>%
-      filter(Name == rv$current_user & (is.na(`Added By`) | `Added By` == rv$current_user)) %>%
+      filter(Name == rv$current_user & (is.na(`Entered By`) | `Entered By` == rv$current_user)) %>%
       arrange(tolower(ifelse(is.na(Item), "", Item)))
 
     reactable(
@@ -852,7 +852,7 @@ server <- function(input, output, session) {
   output$my_item_count <- renderValueBox({
     df <- local_df()
     req(df, rv$current_user)
-    count <- sum(df$Name == rv$current_user & (is.na(df$`Added By`) | df$`Added By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
+    count <- sum(df$Name == rv$current_user & (is.na(df$`Entered By`) | df$`Entered By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
     valueBox(count, "Items on Your Wish List", icon = icon("gift"), color = "teal")
   })
 
@@ -868,7 +868,7 @@ server <- function(input, output, session) {
     req(df, input$selected_other, rv$current_user)
     allowed_names <- get_allowed_names(rv$current_user, available_names())
     req(input$selected_other %in% allowed_names)
-    count <- sum(df$Name == input$selected_other & !is.na(df$Item), na.rm = TRUE)
+    count <- sum(df$Name == input$selected_other & (is.na(df$`Entered By`) | df$`Entered By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
     valueBox(count, paste("Total Items for", input$selected_other), icon = icon("gift"), color = "teal")
   })
 
@@ -898,7 +898,7 @@ server <- function(input, output, session) {
     names_choices <- allowed_names
 
     reactable(
-      others_df %>% select(Item, Size, Link, Bought, `Who Bought`, `Added By`),
+      others_df %>% select(Item, Size, Link, Bought, `Who Bought`, `Entered By`),
       pagination = FALSE,
       wrap = TRUE,
       filterable = TRUE,
@@ -983,7 +983,7 @@ server <- function(input, output, session) {
             )
           }
         ),
-        `Added By` = colDef(
+        `Entered By` = colDef(
           name = "Entered By",
           cell = function(value, index) {
             owner_name <- others_df$Name[index]
