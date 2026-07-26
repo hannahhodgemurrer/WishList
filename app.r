@@ -705,16 +705,17 @@ server <- function(input, output, session) {
       defaultRowHeight = 60,
       highlight = TRUE,
       bordered = TRUE,
+      defaultColDef = colDef(
+        style = list(
+          whiteSpace = "pre-wrap",
+          wordBreak = "break-word"
+        )
+      ),
       columns = list(
-        defaultColDef = colDef(
-  style = list(
-    whiteSpace = "pre-wrap",
-    wordBreak = "break-word"
-  )
-),
-Item = colDef(
-  name = "Item",
-  headerStyle = list(fontWeight = "bold"),
+
+        Item = colDef(
+          name = "Item",
+          headerStyle = list(fontWeight = "bold"),
   minWidth = 180,
 
   style = list(
