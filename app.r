@@ -709,9 +709,14 @@ server <- function(input, output, session) {
           name = "Item",
           headerStyle = list(fontWeight = "bold"),
           minWidth = 180,
+          style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
           cell = function(value, index) {
             row_id <- my_df$row_id[index]
             cur_val <- ifelse(is.na(value), "", as.character(value))
+ tags$div(
+              style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
+              value
+            )
 
             tags$input(
               type = "text",
