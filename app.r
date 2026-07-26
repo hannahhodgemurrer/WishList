@@ -24,6 +24,14 @@ writeLines(
 
 gs4_auth(path = service_account)
 
+# Convert a column name to its spreadsheet letter, based on current df column order.
+# Used so writes target the exact cell/row that changed instead of rewriting
+# the whole sheet (avoids clobbering concurrent edits from other users).
+col_letter <- function(df, colname) {
+  idx <- which(names(df) == colname)
+  if (length(idx) == 0) stop(paste("Column not found:", colname))
+  LETTERS[idx]  # works up to column Z; fine for this sheet's width
+}
 
 # Helper for password input with show/hide eye toggle
 showablePasswordInput <- function(inputId, label, placeholder = "") {
@@ -173,17 +181,24 @@ server <- function(input, output, session) {
 
     # Update local copy
     udf <- users_df()
-    udf$PasswordHash[udf$Name == input$login_user] <- hash
+    row_idx <- which(udf$Name == input$login_user)
+    req(length(row_idx) == 1)
+    udf$PasswordHash[row_idx] <- hash
     users_df(udf)
 
-    # Persist to Google Sheet
+    # Persist only this user's PasswordHash cell to the Google Sheet, rather
+    # than rewriting the whole PassCodes sheet — avoids wiping out another
+    # user's password if they saved between when this session loaded and now.
+    sheet_row <- row_idx + 1  # +1 for header row
+    pw_col <- col_letter(udf, "PasswordHash")
+
     tryCatch({
       range_write(
         ss    = sheet_url,
-        data  = udf,
+        data  = data.frame(x = hash, stringsAsFactors = FALSE),
         sheet = "PassCodes",
-        range = "A1",
-        col_names = TRUE,
+        range = paste0(pw_col, sheet_row),
+        col_names = FALSE,
         reformat  = FALSE
       )
       showNotification("Password created! You can now log in.", type = "message")
@@ -463,6 +478,27 @@ server <- function(input, output, session) {
       }
 
       local_df(df)
+
+      # Write only this row's Bought/Who Bought cells immediately, rather than
+      # waiting for a "Save" click that rewrites the whole sheet — prevents
+      # one person's save from clobbering another person's concurrent edits.
+      sheet_row <- row_idx + 1
+      col_start <- col_letter(df, "Bought")
+      col_end   <- col_letter(df, "Who Bought")
+
+      tryCatch({
+        range_write(
+          ss = sheet_url,
+          data = df[row_idx, c("Bought", "Who Bought")],
+          sheet = "WishLists",
+          range = paste0(col_start, sheet_row, ":", col_end, sheet_row),
+          col_names = FALSE,
+          reformat = FALSE
+        )
+      }, error = function(e) {
+        showNotification(paste("Error saving purchase status:", e$message),
+                         type = "error", duration = 10)
+      })
     }
   })
 
@@ -482,6 +518,25 @@ server <- function(input, output, session) {
         df$Bought[row_idx] <- "Yes"
       }
       local_df(df)
+
+      # Write only this row's Bought/Who Bought cells immediately.
+      sheet_row <- row_idx + 1
+      col_start <- col_letter(df, "Bought")
+      col_end   <- col_letter(df, "Who Bought")
+
+      tryCatch({
+        range_write(
+          ss = sheet_url,
+          data = df[row_idx, c("Bought", "Who Bought")],
+          sheet = "WishLists",
+          range = paste0(col_start, sheet_row, ":", col_end, sheet_row),
+          col_names = FALSE,
+          reformat = FALSE
+        )
+      }, error = function(e) {
+        showNotification(paste("Error saving buyer:", e$message),
+                         type = "error", duration = 10)
+      })
     }
   })
 
@@ -581,25 +636,13 @@ server <- function(input, output, session) {
     })
   })
 
-  # Save Purchase Status Updates for Others Wish List
+  # "Save Updates" button: Bought/Who Bought changes now save immediately
+  # per-cell as they're toggled (see bought_change/buyer_change above), so
+  # this button just re-fetches the latest data from the sheet — useful if
+  # someone else has made changes since this session loaded.
   observeEvent(input$save_purchases, {
-    df <- local_df()
-    req(df)
-
-    tryCatch({
-      range_write(
-        ss = sheet_url,
-        data = df,
-        sheet = "WishLists",
-        range = "A1",
-        col_names = TRUE,
-        reformat = FALSE
-      )
-      showNotification("Saved purchase updates", type = "message")
-      local_df(fetch_sheet_data())
-    }, error = function(e) {
-      showNotification(paste("Error saving updates:", e$message), type = "error", duration = 10)
-    })
+    local_df(fetch_sheet_data())
+    showNotification("Refreshed with latest data", type = "message")
   })
 
   # Tab 1: My Wish List Table (editable, bold Item header & cells, sorted alphabetically)
@@ -714,6 +757,25 @@ server <- function(input, output, session) {
       new_val <- if (nzchar(info$value)) info$value else NA_character_
       df[[col]][row_idx] <- new_val
       local_df(df)
+
+      # Write only this single cell immediately, rather than waiting for a
+      # "Save Changes" click that would rewrite the whole sheet.
+      sheet_row <- row_idx + 1
+      cell_col <- col_letter(df, col)
+
+      tryCatch({
+        range_write(
+          ss = sheet_url,
+          data = data.frame(x = new_val, stringsAsFactors = FALSE),
+          sheet = "WishLists",
+          range = paste0(cell_col, sheet_row),
+          col_names = FALSE,
+          reformat = FALSE
+        )
+      }, error = function(e) {
+        showNotification(paste("Error saving edit:", e$message),
+                         type = "error", duration = 10)
+      })
     }
   })
 
@@ -752,48 +814,38 @@ server <- function(input, output, session) {
     req(df, row_idx)
 
     if (row_idx >= 1 && row_idx <= nrow(df)) {
-      df <- df[-row_idx, ]
-      local_df(df)
-      pending_delete_row(NULL)
-      removeModal()
+      sheet_row <- row_idx + 1  # +1 for header row
+      n_cols <- ncol(df)
+      last_col <- LETTERS[n_cols]
 
-      # Immediately persist the deletion to Google Sheet
+      # Delete just this one sheet row (shifting rows below it up), rather
+      # than clearing and rewriting the entire table.
       tryCatch({
-        range_clear(ss = sheet_url, sheet = "WishLists", range = "A1:ZZ")
-        range_write(
+        range_delete(
           ss = sheet_url,
-          data = df,
           sheet = "WishLists",
-          range = "A1",
-          col_names = TRUE,
-          reformat = FALSE
+          range = paste0("A", sheet_row, ":", last_col, sheet_row),
+          shift = "up"
         )
+        pending_delete_row(NULL)
+        removeModal()
         showNotification("Row deleted", type = "message")
+        # Re-fetch: deleting shifted every row below it up by one, so
+        # in-memory row indices (which drive row_id in the tables) must
+        # realign with the sheet's new row numbers.
+        local_df(fetch_sheet_data())
       }, error = function(e) {
         showNotification(paste("Error deleting row:", e$message), type = "error", duration = 10)
       })
     }
   })
 
-  # Save My Wish List edits to Google Sheet
+  # "Save Changes" button: Item/Size/Link edits now save immediately per-cell
+  # as they're typed (see my_edit above), so this button just re-fetches the
+  # latest data from the sheet.
   observeEvent(input$save_my_edits, {
-    df <- local_df()
-    req(df)
-
-    tryCatch({
-      range_write(
-        ss = sheet_url,
-        data = df,
-        sheet = "WishLists",
-        range = "A1",
-        col_names = TRUE,
-        reformat = FALSE
-      )
-      showNotification("Your wish list changes have been saved", type = "message")
-      local_df(fetch_sheet_data())
-    }, error = function(e) {
-      showNotification(paste("Error saving changes:", e$message), type = "error", duration = 10)
-    })
+    local_df(fetch_sheet_data())
+    showNotification("Refreshed with latest data", type = "message")
   })
 
   # Tab 1: My Item Count Box
