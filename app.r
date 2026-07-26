@@ -909,7 +909,7 @@ observeEvent(input$my_edit, {
 
   })
 
-
+})
 
   # Store the pending delete row index
   pending_delete_row <- reactiveVal(NULL)
