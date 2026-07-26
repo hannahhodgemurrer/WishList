@@ -8,12 +8,13 @@ library(reactable)
 library(htmltools)
 library(sodium)
 library(rsconnect)
+library(jsonlite)
+
 # Google Sheet URL
 sheet_url <- "https://docs.google.com/spreadsheets/d/1Sjx9ETDXCIeTnuDJ_aUokqzt-mOfGyKg_HTljzunkOc/edit?gid=1726487847#gid=1726487847"
+
 ### use locally
 # gs4_auth(path = "service-account.json")
-
-library(jsonlite)
 
 service_account <- tempfile(fileext = ".json")
 
@@ -57,22 +58,22 @@ showablePasswordInput <- function(inputId, label, placeholder = "") {
   )
 }
 
-# ─── UI ──────────────────────────────────────────────────────────────────────
+# ─── UI ───────────────────────────────────────────────────────────────────────
 # We use a simple fluidPage shell; the login form or dashboard is rendered
 # dynamically on the server side based on authentication state.
 ui <- fluidPage(
   uiOutput("page_ui")
 )
 
-# ─── SERVER ──────────────────────────────────────────────────────────────────
+# ─── SERVER ───────────────────────────────────────────────────────────────────
 server <- function(input, output, session) {
-  # ── Auth state ───────────────────────────────────────────────────────────
+  # ── Auth state ─────────────────────────────────────────────────────────────
   rv <- reactiveValues(
     logged_in    = FALSE,
     current_user = NULL
   )
 
-  # ── Fetch user/password data from PassCodes sheet ────────────────────────
+  # ── Fetch user/password data from PassCodes sheet ──────────────────────────
   users_df <- reactiveVal(NULL)
 
   observe({
@@ -96,18 +97,18 @@ server <- function(input, output, session) {
     )
   }) |> bindEvent(TRUE, once = TRUE) # run once at startup
 
-  # ── Main page router ────────────────────────────────────────────────────
+  # ── Main page router ───────────────────────────────────────────────────────
   output$page_ui <- renderUI({
     if (!rv$logged_in) {
-      # ── LOGIN PAGE ──────────────────────────────────────────────────────
+      # ── LOGIN PAGE ─────────────────────────────────────────────────────────
       login_ui()
     } else {
-      # ── DASHBOARD ───────────────────────────────────────────────────────
+      # ── DASHBOARD ──────────────────────────────────────────────────────────
       dashboard_ui()
     }
   })
 
-  # ── Login UI builder ────────────────────────────────────────────────────
+  # ── Login UI builder ───────────────────────────────────────────────────────
   login_ui <- function() {
     udf <- users_df()
     if (is.null(udf)) {
@@ -135,7 +136,7 @@ server <- function(input, output, session) {
     )
   }
 
-  # ── Dynamic login fields: password-create vs. password-enter ────────────
+  # ── Dynamic login fields: password-create vs. password-enter ───────────────
   output$login_fields <- renderUI({
     udf <- users_df()
     req(udf, input$login_user)
@@ -165,7 +166,7 @@ server <- function(input, output, session) {
     }
   })
 
-  # ── Create password ─────────────────────────────────────────────────────
+  # ── Create password ────────────────────────────────────────────────────────
   observeEvent(input$create_btn, {
     req(input$new_pw, input$confirm_pw)
 
@@ -218,7 +219,7 @@ server <- function(input, output, session) {
     )
   })
 
-  # ── Log in ──────────────────────────────────────────────────────────────
+  # ── Log in ─────────────────────────────────────────────────────────────────
   observeEvent(input$login_btn, {
     req(input$pw, input$login_user)
 
@@ -242,11 +243,7 @@ server <- function(input, output, session) {
     }
   })
 
-  # ═══════════════════════════════════════════════════════════════════════
-
-  # ── DASHBOARD (rendered after login) ─────────────────────────────────
-  # ═══════════════════════════════════════════════════════════════════════
-
+  # ── DASHBOARD (rendered after login) ───────────────────────────────────────
   dashboard_ui <- function() {
     dashboardPage(
       skin = "purple",
@@ -370,16 +367,13 @@ server <- function(input, output, session) {
     )
   }
 
-  # ── Log out ─────────────────────────────────────────────────────────────
+  # ── Log out ────────────────────────────────────────────────────────────────
   observeEvent(input$logout_btn, {
     rv$logged_in <- FALSE
     rv$current_user <- NULL
   })
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # ── WISH LIST DATA (same logic as app.r, using rv$current_user) ──────
-  # ═══════════════════════════════════════════════════════════════════════
-
+  # ── WISH LIST DATA ─────────────────────────────────────────────────────────
   # Main in-memory reactive data frame for wish list items
   local_df <- reactiveVal(NULL)
 
@@ -676,65 +670,33 @@ server <- function(input, output, session) {
     local_df(fetch_sheet_data())
     showNotification("Refreshed with latest data", type = "message")
   })
-  # ============================================================
-  # Helper: Convert column number to Google Sheets column letter
-  # ============================================================
 
+  # ── Helper: Convert column number to Google Sheets column letter ───────────
   int2col <- function(n) {
     letters <- ""
-
     while (n > 0) {
       r <- (n - 1) %% 26
-
-      letters <- paste0(
-        LETTERS[r + 1],
-        letters
-      )
-
+      letters <- paste0(LETTERS[r + 1], letters)
       n <- floor((n - r) / 26)
     }
-
     letters
   }
 
-
-  # ============================================================
-  # Tab 1: My Wish List Table (editable)
-  # ============================================================
-
+  # ── Tab 1: My Wish List Table (editable) ───────────────────────────────────
   output$my_wishlist_table <- renderReactable({
     df <- local_df()
-
-    req(
-      df,
-      rv$current_user
-    )
-
+    req(df, rv$current_user)
 
     my_df <- df %>%
-      mutate(
-        row_id = row_number()
-      ) %>%
+      mutate(row_id = row_number()) %>%
       filter(
         Name == rv$current_user &
-          (
-            is.na(`Entered By`) |
-              `Entered By` == rv$current_user
-          )
+          (is.na(`Entered By`) | `Entered By` == rv$current_user)
       ) %>%
-      arrange(
-        tolower(ifelse(is.na(Item), "", Item))
-      )
-
+      arrange(tolower(ifelse(is.na(Item), "", Item)))
 
     reactable(
-      my_df %>%
-        select(
-          Item,
-          Size,
-          Link,
-          row_id
-        ),
+      my_df %>% select(Item, Size, Link, row_id),
       pagination = FALSE,
       wrap = TRUE,
       filterable = FALSE,
@@ -745,47 +707,24 @@ server <- function(input, output, session) {
       columns = list(
         Item = colDef(
           name = "Item",
-          headerStyle = list(
-            fontWeight = "bold"
-          ),
+          headerStyle = list(fontWeight = "bold"),
           minWidth = 180,
           cell = function(value, index) {
             row_id <- my_df$row_id[index]
-
-
-            cur_val <- ifelse(
-              is.na(value),
-              "",
-              as.character(value)
-            )
-
+            cur_val <- ifelse(is.na(value), "", as.character(value))
 
             tags$input(
               type = "text",
               value = cur_val,
               placeholder = "Item name...",
               onblur = sprintf(
-                "Shiny.setInputValue(
-                'my_edit',
-                {
-                  row:%d,
-                  col:'Item',
-                  value:this.value
-                },
-                {priority:'event'}
-              )",
+                "Shiny.setInputValue('my_edit', {row:%d, col:'Item', value:this.value}, {priority:'event'})",
                 row_id
               ),
-              onkeydown =
-                "event.stopPropagation();",
-              onclick =
-                "event.stopPropagation();",
+              onkeydown = "event.stopPropagation();",
+              onclick = "event.stopPropagation();",
               class = "form-control",
-              style =
-                "padding:4px 6px;
-               font-size:13px;
-               font-weight:bold;
-               width:100%;"
+              style = "padding:4px 6px; font-size:13px; font-weight:bold; width:100%;"
             )
           }
         ),
@@ -794,40 +733,20 @@ server <- function(input, output, session) {
           minWidth = 120,
           cell = function(value, index) {
             row_id <- my_df$row_id[index]
-
-
-            cur_val <- ifelse(
-              is.na(value),
-              "",
-              as.character(value)
-            )
-
+            cur_val <- ifelse(is.na(value), "", as.character(value))
 
             tags$input(
               type = "text",
               value = cur_val,
               placeholder = "e.g. Medium",
               onblur = sprintf(
-                "Shiny.setInputValue(
-                'my_edit',
-                {
-                  row:%d,
-                  col:'Size',
-                  value:this.value
-                },
-                {priority:'event'}
-              )",
+                "Shiny.setInputValue('my_edit', {row:%d, col:'Size', value:this.value}, {priority:'event'})",
                 row_id
               ),
-              onkeydown =
-                "event.stopPropagation();",
-              onclick =
-                "event.stopPropagation();",
+              onkeydown = "event.stopPropagation();",
+              onclick = "event.stopPropagation();",
               class = "form-control",
-              style =
-                "padding:4px 6px;
-               font-size:13px;
-               width:100%;"
+              style = "padding:4px 6px; font-size:13px; width:100%;"
             )
           }
         ),
@@ -836,14 +755,7 @@ server <- function(input, output, session) {
           minWidth = 220,
           cell = function(value, index) {
             row_id <- my_df$row_id[index]
-
-
-            cur_val <- ifelse(
-              is.na(value),
-              "",
-              as.character(value)
-            )
-
+            cur_val <- ifelse(is.na(value), "", as.character(value))
 
             tagList(
               tags$input(
@@ -851,27 +763,13 @@ server <- function(input, output, session) {
                 value = cur_val,
                 placeholder = "https://...",
                 onblur = sprintf(
-                  "Shiny.setInputValue(
-                  'my_edit',
-                  {
-                    row:%d,
-                    col:'Link',
-                    value:this.value
-                  },
-                  {priority:'event'}
-                )",
+                  "Shiny.setInputValue('my_edit', {row:%d, col:'Link', value:this.value}, {priority:'event'})",
                   row_id
                 ),
-                onkeydown =
-                  "event.stopPropagation();",
-                onclick =
-                  "event.stopPropagation();",
+                onkeydown = "event.stopPropagation();",
+                onclick = "event.stopPropagation();",
                 class = "form-control",
-                style =
-                  "padding:4px 6px;
-                 font-size:13px;
-                 display:inline-block;
-                 width:calc(100%% - 36px);"
+                style = "padding:4px 6px; font-size:13px; display:inline-block; width:calc(100% - 36px);"
               ),
               if (nzchar(cur_val)) {
                 tags$a(
@@ -879,9 +777,7 @@ server <- function(input, output, session) {
                   target = "_blank",
                   rel = "noopener noreferrer",
                   icon("external-link-alt"),
-                  style =
-                    "margin-left:6px;
-                   vertical-align:middle;"
+                  style = "margin-left:6px; vertical-align:middle;"
                 )
               }
             )
@@ -895,20 +791,11 @@ server <- function(input, output, session) {
           cell = function(value) {
             tags$button(
               onclick = sprintf(
-                "Shiny.setInputValue(
-                'delete_my_row',
-                {
-                  row:%d,
-                  nonce:Math.random()
-                },
-                {priority:'event'}
-              )",
+                "Shiny.setInputValue('delete_my_row', {row:%d, nonce:Math.random()}, {priority:'event'})",
                 value
               ),
               class = "btn btn-danger btn-sm",
-              style =
-                "padding:2px 8px;
-               font-size:12px;",
+              style = "padding:2px 8px; font-size:12px;",
               icon("trash"),
               " Delete"
             )
@@ -918,235 +805,113 @@ server <- function(input, output, session) {
     )
   })
 
-
-  # ============================================================
-  # Capture edits without refreshing table
-  # ============================================================
-
+  # ── Capture edits without refreshing table ────────────────────────────────
   observeEvent(input$my_edit, {
     info <- input$my_edit
+    req(info$row, info$col, !is.null(info$value))
 
-
-    req(
-      info$row,
-      info$col,
-      !is.null(info$value)
-    )
-
-
-    if (info$col %in% c(
-      "Item",
-      "Size",
-      "Link"
-    )) {
+    if (info$col %in% c("Item", "Size", "Link")) {
       if (is.null(rv$my_edits)) {
         rv$my_edits <- list()
       }
-
-
-      key <- paste(
-        as.integer(info$row),
-        info$col,
-        sep = "_"
-      )
-
-
+      key <- paste(as.integer(info$row), info$col, sep = "_")
       rv$my_edits[[key]] <- info$value
     }
   })
 
-
-  # ============================================================
-  # Save ONLY changed cells
-  # ============================================================
-
+  # ── Save ONLY changed cells ────────────────────────────────────────────────
   observeEvent(input$save_my_edits, {
     edits <- rv$my_edits
-
-
-    req(
-      edits,
-      length(edits) > 0
-    )
-
+    req(edits, length(edits) > 0)
 
     tryCatch(
       {
         df <- local_df()
 
-
         for (key in names(edits)) {
-          parts <- strsplit(
-            key,
-            "_"
-          )[[1]]
-
-
+          parts <- strsplit(key, "_")[[1]]
           row_id <- as.integer(parts[1])
-
           col_name <- parts[2]
 
+          col_num <- match(col_name, names(df))
+          req(!is.na(col_num))
 
-          col_num <- match(
-            col_name,
-            names(df)
-          )
-
-
-          req(
-            !is.na(col_num)
-          )
-
-
-          col_letter <- int2col(
-            col_num
-          )
-
+          col_letter_val <- int2col(col_num)
 
           # +1 because row 1 in Google Sheets is headers
-          sheet_cell <- paste0(
-            col_letter,
-            row_id + 1
-          )
+          sheet_cell <- paste0(col_letter_val, row_id + 1)
           new_value <- edits[[key]]
-
 
           if (!nzchar(new_value)) {
             new_value <- NA_character_
           }
 
-
-          print(
-            paste(
-              "Saving",
-              new_value,
-              "to",
-              sheet_cell
-            )
-          )
-
+          print(paste("Saving", new_value, "to", sheet_cell))
 
           range_write(
             ss = sheet_url,
             sheet = "WishLists",
             range = sheet_cell,
-            data = data.frame(
-              value = new_value
-            ),
+            data = data.frame(value = new_value),
             col_names = FALSE,
             reformat = FALSE
           )
-
 
           # update local memory
           new_value <- as.character(new_value)
         }
 
-
         local_df(df)
-
-
         rv$my_edits <- list()
-
-
-        showNotification(
-          "Saved changes",
-          type = "message"
-        )
+        showNotification("Saved changes", type = "message")
       },
       error = function(e) {
         showNotification(
-          paste(
-            "Error saving changes:",
-            e$message
-          ),
+          paste("Error saving changes:", e$message),
           type = "error",
           duration = 10
         )
       }
     )
   })
-  # ============================================================
-  # Delete Wish List Row
-  # ============================================================
 
-
+  # ── Delete Wish List Row ───────────────────────────────────────────────────
   # Stores the row waiting for confirmation
   pending_delete_row <- reactiveVal(NULL)
 
-
-  # ------------------------------------------------------------
   # Step 1: User clicks Delete button
-  # ------------------------------------------------------------
-
   observeEvent(input$delete_my_row, {
-    req(
-      input$delete_my_row$row
-    )
-
-
-    pending_delete_row(
-      as.integer(input$delete_my_row$row)
-    )
-
+    req(input$delete_my_row$row)
+    pending_delete_row(as.integer(input$delete_my_row$row))
 
     showModal(
       modalDialog(
         title = "Confirm Delete",
         "Are you sure you want to delete this item?",
         footer = tagList(
-          modalButton(
-            "Cancel"
-          ),
-          actionButton(
-            "confirm_delete",
-            "Delete",
-            class = "btn btn-danger"
-          )
+          modalButton("Cancel"),
+          actionButton("confirm_delete", "Delete", class = "btn btn-danger")
         ),
         easyClose = TRUE
       )
     )
   })
 
-
-  # ------------------------------------------------------------
   # Step 2: Confirm deletion
-  # ------------------------------------------------------------
-
   observeEvent(input$confirm_delete, {
     row_idx <- pending_delete_row()
-
-
     df <- local_df()
-
-
-    req(
-      df,
-      row_idx
-    )
-
+    req(df, row_idx)
 
     tryCatch(
       {
         # Google Sheets has a header row
         sheet_row <- row_idx + 1
 
-
         # Last used column
-        last_col <- int2col(
-          ncol(df)
-        )
+        last_col <- int2col(ncol(df))
 
-
-        delete_range <- paste0(
-          "A",
-          sheet_row,
-          ":",
-          last_col,
-          sheet_row
-        )
-
+        delete_range <- paste0("A", sheet_row, ":", last_col, sheet_row)
 
         range_delete(
           ss = sheet_url,
@@ -1155,31 +920,17 @@ server <- function(input, output, session) {
           shift = "up"
         )
 
-
         # Clear pending state
         pending_delete_row(NULL)
-
-
         removeModal()
-
-
-        showNotification(
-          "Row deleted",
-          type = "message"
-        )
-
+        showNotification("Row deleted", type = "message")
 
         # Reload data because rows shifted upward
-        local_df(
-          fetch_sheet_data()
-        )
+        local_df(fetch_sheet_data())
       },
       error = function(e) {
         showNotification(
-          paste(
-            "Error deleting row:",
-            e$message
-          ),
+          paste("Error deleting row:", e$message),
           type = "error",
           duration = 10
         )
@@ -1187,6 +938,7 @@ server <- function(input, output, session) {
     )
   })
 
+  # ── Dashboard Summary Boxes ────────────────────────────────────────────────
   # Tab 1: My Item Count Box
   output$my_item_count <- renderValueBox({
     df <- local_df()
@@ -1221,7 +973,7 @@ server <- function(input, output, session) {
     valueBox(bought_count, paste("Items Available"), icon = icon("shopping-cart"), color = "green")
   })
 
-  # Tab 2: Others Wish List Table (bold Item header & cell text, text wrapped, sorted alphabetically with Bought=Yes at bottom)
+  # ── Tab 2: Others Wish List Table ──────────────────────────────────────────
   output$others_wishlist_table <- renderReactable({
     df <- local_df()
     req(df, input$selected_other, rv$current_user)
