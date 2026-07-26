@@ -253,6 +253,10 @@ server <- function(input, output, session) {
           class = "dropdown",
           style = "padding: 8px 12px; display: flex; align-items: center; gap: 8px;",
           span(paste("Logged in as:", rv$current_user), style = "color: white; font-weight: bold; margin-right: 4px;"),
+          actionButton("info_btn", "Info",
+            icon = icon("info-circle"),
+            class = "btn-sm btn-info"
+          ),
           actionButton("refresh", "Refresh Data",
             icon = icon("sync"),
             class = "btn-sm btn-primary"
@@ -392,6 +396,44 @@ server <- function(input, output, session) {
       )
     )
   }
+
+  # ── Info Modal Popup ───────────────────────────────────────────────────────
+  observeEvent(input$info_btn, {
+    showModal(
+      modalDialog(
+        title = tagList(icon("info-circle", class = "text-info"), " How Wish Lists Work"),
+        div(
+          style = "line-height: 1.6; font-size: 14px;",
+          h4(tagList(icon("user"), " My Wish List Tab"), style = "margin-top: 0; color: #605ca8; font-weight: bold;"),
+          tags$ul(
+            tags$li(tags$b("Your Editable Wish List: "), "This is your personal wish list. Any items and edits you add here will be seen by everyone else."),
+            tags$li(tags$b("Protected Items: "), "No one else can edit or delete your pre-existing wish list items.")
+          ),
+          hr(),
+          h4(tagList(icon("users"), " Other's Wish Lists Tab"), style = "color: #00c0ef; font-weight: bold;"),
+          tags$ul(
+            tags$li(tags$b("Browse Wish Lists: "), "Select any individual from the dropdown menu to view their wish list items."),
+            tags$li(tags$b("Add Secret Items: "), "You can add items to someone else's list! Items added by others remain hidden from that person, so you can share ideas or coordinate gifts with everyone else while keeping it a surprise."),
+            tags$li(tags$b("Group Transparency: "), "Mark items as bought when you purchase them to make gift buying easier and prevent duplicate purchases.")
+          ),
+          div(
+            class = "alert alert-danger",
+            style = "margin-top: 15px; margin-bottom: 0; padding: 10px 15px;",
+            tagList(
+              icon("exclamation-triangle"),
+              tags$b(" Important Rule: "),
+              "Once an item is marked as bought, it turns ",
+              tags$b("red"),
+              ". ",
+              tags$b("DO NOT buy items highlighted in red!")
+            )
+          )
+        ),
+        easyClose = TRUE,
+        footer = modalButton("Close")
+      )
+    )
+  })
 
   # ── Log out ────────────────────────────────────────────────────────────────
   observeEvent(input$logout_btn, {
