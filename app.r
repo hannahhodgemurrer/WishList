@@ -59,71 +59,9 @@ showablePasswordInput <- function(inputId, label, placeholder = "") {
 }
 
 # ─── UI ───────────────────────────────────────────────────────────────────────
-# Simple fluidPage shell; login form or dashboard is rendered dynamically on server side.
-# Includes viewport meta tag and custom CSS for mobile responsiveness & card views.
+# We use a simple fluidPage shell; the login form or dashboard is rendered
+# dynamically on the server side based on authentication state.
 ui <- fluidPage(
-  tags$head(
-    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
-    tags$style(HTML("
-      /* Mobile Responsiveness & Card View for Reactable Tables */
-      @media (max-width: 767px) {
-        .content-wrapper, .right-side {
-          padding: 10px 6px !important;
-        }
-        .box {
-          margin-bottom: 12px !important;
-        }
-        .mobile-label {
-          display: block !important;
-          font-weight: 700;
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          color: #605ca8;
-          margin-bottom: 3px;
-        }
-        .reactable-mobile .rt-thead {
-          display: none !important;
-        }
-        .reactable-mobile .rt-tbody {
-          display: flex !important;
-          flex-direction: column !important;
-          gap: 12px !important;
-        }
-        .reactable-mobile .rt-tr-group {
-          border: 1px solid #d2d6de !important;
-          border-radius: 8px !important;
-          background: #ffffff !important;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
-          padding: 12px !important;
-        }
-        .reactable-mobile .rt-tr {
-          display: flex !important;
-          flex-direction: column !important;
-          border: none !important;
-        }
-        .reactable-mobile .rt-td {
-          display: block !important;
-          border: none !important;
-          padding: 6px 0 !important;
-          width: 100% !important;
-          max-width: 100% !important;
-        }
-        .form-control {
-          font-size: 15px !important;
-        }
-        .mobile-full-width {
-          width: 100% !important;
-          margin-top: 4px !important;
-        }
-      }
-      @media (min-width: 768px) {
-        .mobile-label {
-          display: none !important;
-        }
-      }
-    "))
-  ),
   uiOutput("page_ui")
 )
 
@@ -759,7 +697,6 @@ server <- function(input, output, session) {
 
     reactable(
       my_df %>% select(Item, Size, Link, row_id),
-      class = "reactable-mobile",
       pagination = FALSE,
       wrap = TRUE,
       filterable = FALSE,
@@ -774,35 +711,64 @@ server <- function(input, output, session) {
         )
       ),
       columns = list(
+
         Item = colDef(
           name = "Item",
           headerStyle = list(fontWeight = "bold"),
-          minWidth = 180,
-          style = list(
-            whiteSpace = "pre-wrap",
-            wordBreak = "break-word"
-          ),
-          cell = function(value, index) {
-            row_id <- my_df$row_id[index]
-            cur_val <- ifelse(is.na(value), "", as.character(value))
+  minWidth = 180,
 
-            tagList(
-              tags$div(class = "mobile-label", "Item"),
-              tags$textarea(
-                value = cur_val,
-                placeholder = "Item name...",
-                onblur = sprintf(
-                  "Shiny.setInputValue('my_edit', {row:%d, col:'Item', value:this.value}, {priority:'event'})",
-                  row_id
-                ),
-                onkeydown = "event.stopPropagation();",
-                onclick = "event.stopPropagation();",
-                class = "form-control",
-                style = "padding:4px 6px; font-size:13px; font-weight:bold; width:100%; min-height:38px; resize:vertical; white-space:pre-wrap; overflow-wrap:break-word;"
-              )
-            )
-          }
-        ),
+  style = list(
+    whiteSpace = "pre-wrap",
+    wordBreak = "break-word"
+  ),
+
+  cell = function(value, index) {
+
+    row_id <- my_df$row_id[index]
+
+    cur_val <- ifelse(
+      is.na(value),
+      "",
+      as.character(value)
+    )
+
+
+    tags$textarea(
+      value = cur_val,
+
+      placeholder = "Item name...",
+
+      onblur = sprintf(
+        "Shiny.setInputValue(
+          'my_edit',
+          {
+            row:%d,
+            col:'Item',
+            value:this.value
+          },
+          {priority:'event'}
+        )",
+        row_id
+      ),
+
+      onkeydown = "event.stopPropagation();",
+
+      onclick = "event.stopPropagation();",
+
+      class = "form-control",
+
+      style =
+        "padding:4px 6px;
+         font-size:13px;
+         font-weight:bold;
+         width:100%;
+         min-height:38px;
+         resize:vertical;
+         white-space:pre-wrap;
+         overflow-wrap:break-word;"
+    )
+  }
+),
         Size = colDef(
           name = "Size / Options",
           minWidth = 120,
@@ -810,21 +776,18 @@ server <- function(input, output, session) {
             row_id <- my_df$row_id[index]
             cur_val <- ifelse(is.na(value), "", as.character(value))
 
-            tagList(
-              tags$div(class = "mobile-label", "Size / Options"),
-              tags$input(
-                type = "text",
-                value = cur_val,
-                placeholder = "e.g. Medium",
-                onblur = sprintf(
-                  "Shiny.setInputValue('my_edit', {row:%d, col:'Size', value:this.value}, {priority:'event'})",
-                  row_id
-                ),
-                onkeydown = "event.stopPropagation();",
-                onclick = "event.stopPropagation();",
-                class = "form-control",
-                style = "padding:4px 6px; font-size:13px; width:100%;"
-              )
+            tags$input(
+              type = "text",
+              value = cur_val,
+              placeholder = "e.g. Medium",
+              onblur = sprintf(
+                "Shiny.setInputValue('my_edit', {row:%d, col:'Size', value:this.value}, {priority:'event'})",
+                row_id
+              ),
+              onkeydown = "event.stopPropagation();",
+              onclick = "event.stopPropagation();",
+              class = "form-control",
+              style = "padding:4px 6px; font-size:13px; width:100%;"
             )
           }
         ),
@@ -836,7 +799,6 @@ server <- function(input, output, session) {
             cur_val <- ifelse(is.na(value), "", as.character(value))
 
             tagList(
-              tags$div(class = "mobile-label", "Link"),
               tags$input(
                 type = "text",
                 value = cur_val,
@@ -868,18 +830,15 @@ server <- function(input, output, session) {
           filterable = FALSE,
           width = 85,
           cell = function(value) {
-            tagList(
-              tags$div(class = "mobile-label", "Actions"),
-              tags$button(
-                onclick = sprintf(
-                  "Shiny.setInputValue('delete_my_row', {row:%d, nonce:Math.random()}, {priority:'event'})",
-                  value
-                ),
-                class = "btn btn-danger btn-sm mobile-full-width",
-                style = "padding:2px 8px; font-size:12px;",
-                icon("trash"),
-                " Delete"
-              )
+            tags$button(
+              onclick = sprintf(
+                "Shiny.setInputValue('delete_my_row', {row:%d, nonce:Math.random()}, {priority:'event'})",
+                value
+              ),
+              class = "btn btn-danger btn-sm",
+              style = "padding:2px 8px; font-size:12px;",
+              icon("trash"),
+              " Delete"
             )
           }
         )
@@ -1072,7 +1031,6 @@ server <- function(input, output, session) {
 
     reactable(
       others_df %>% select(Item, Size, Link, Bought, `Who Bought`, `Entered By`),
-      class = "reactable-mobile",
       pagination = FALSE,
       wrap = TRUE,
       filterable = TRUE,
@@ -1094,34 +1052,22 @@ server <- function(input, output, session) {
           headerStyle = list(fontWeight = "bold"),
           style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
           cell = function(value) {
-            tagList(
-              tags$div(class = "mobile-label", "Item"),
-              tags$div(
-                style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
-                value
-              )
+            tags$div(
+              style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
+              value
             )
           }
         ),
         Size = colDef(
-          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word"),
-          cell = function(value) {
-            tagList(
-              tags$div(class = "mobile-label", "Size / Options"),
-              tags$div(if (!is.na(value) && nzchar(value)) value else "\u2014")
-            )
-          }
+          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word")
         ),
         Link = colDef(
           cell = function(value) {
-            tagList(
-              tags$div(class = "mobile-label", "Link"),
-              if (!is.na(value) && nzchar(value)) {
-                tags$a(href = value, target = "_blank", rel = "noopener noreferrer", "View Link")
-              } else {
-                "\u2014"
-              }
-            )
+            if (!is.na(value) && nzchar(value)) {
+              tags$a(href = value, target = "_blank", rel = "noopener noreferrer", "View Link")
+            } else {
+              "\u2014"
+            }
           }
         ),
         Bought = colDef(
@@ -1137,15 +1083,12 @@ server <- function(input, output, session) {
               "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px;"
             }
 
-            tagList(
-              tags$div(class = "mobile-label", "Bought?"),
-              tags$select(
-                onchange = sprintf("Shiny.setInputValue('bought_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
-                class = "form-control",
-                style = select_style,
-                tags$option(value = "No", selected = if (!is_yes) "selected" else NULL, "No"),
-                tags$option(value = "Yes", selected = if (is_yes) "selected" else NULL, "Yes")
-              )
+            tags$select(
+              onchange = sprintf("Shiny.setInputValue('bought_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = select_style,
+              tags$option(value = "No", selected = if (!is_yes) "selected" else NULL, "No"),
+              tags$option(value = "Yes", selected = if (is_yes) "selected" else NULL, "Yes")
             )
           }
         ),
@@ -1164,14 +1107,11 @@ server <- function(input, output, session) {
               )
             }
 
-            tagList(
-              tags$div(class = "mobile-label", "Who Bought It"),
-              tags$select(
-                onchange = sprintf("Shiny.setInputValue('buyer_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
-                class = "form-control",
-                style = "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 140px;",
-                opt_list
-              )
+            tags$select(
+              onchange = sprintf("Shiny.setInputValue('buyer_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 140px;",
+              opt_list
             )
           }
         ),
@@ -1179,11 +1119,11 @@ server <- function(input, output, session) {
           name = "Entered By",
           cell = function(value, index) {
             owner_name <- others_df$Name[index]
-            val_str <- if (is.na(value) || !nzchar(as.character(value))) owner_name else as.character(value)
-            tagList(
-              tags$div(class = "mobile-label", "Entered By"),
-              tags$div(val_str)
-            )
+            if (is.na(value) || !nzchar(as.character(value))) {
+              owner_name
+            } else {
+              as.character(value)
+            }
           }
         )
       )
