@@ -702,9 +702,16 @@ server <- function(input, output, session) {
       filterable = FALSE,
       searchable = FALSE,
       striped = TRUE,
+      defaultRowHeight = 60,
       highlight = TRUE,
       bordered = TRUE,
       columns = list(
+        defaultColDef = colDef(
+  style = list(
+    whiteSpace = "pre-wrap",
+    wordBreak = "break-word"
+  )
+),
 Item = colDef(
   name = "Item",
   headerStyle = list(fontWeight = "bold"),
