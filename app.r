@@ -1030,7 +1030,7 @@ server <- function(input, output, session) {
       filter(Name == input$selected_other) %>%
       arrange(Bought == "Yes", tolower(ifelse(is.na(Item), "", Item)))
 
-    names_choices <- allowed_names
+    names_choices <- sort(unique(allowed_names))
 
     reactable(
       others_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
