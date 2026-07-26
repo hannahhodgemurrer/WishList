@@ -644,7 +644,15 @@ server <- function(input, output, session) {
     local_df(fetch_sheet_data())
     showNotification("Refreshed with latest data", type = "message")
   })
-
+int2col <- function(n) {
+  letters <- ""
+  while (n > 0) {
+    r <- (n - 1) %% 26
+    letters <- paste0(LETTERS[r + 1], letters)
+    n <- floor((n - r) / 26)
+  }
+  letters
+}
  # Tab 1: My Wish List Table (editable)
 output$my_wishlist_table <- renderReactable({
 
