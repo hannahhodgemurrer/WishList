@@ -9,20 +9,21 @@ library(htmltools)
 library(sodium)
 library(rsconnect)
 # Google Sheet URL
-sheet_url <- "https://docs.google.com/spreadsheets/d/1hj1fJLvWw_spf-cWZP9vDOT_eE8LAECKsvHo8WC5DD4/edit?usp=sharing"
+sheet_url <- "https://docs.google.com/spreadsheets/d/1Sjx9ETDXCIeTnuDJ_aUokqzt-mOfGyKg_HTljzunkOc/edit?gid=1726487847#gid=1726487847"
+###use locally
+#gs4_auth(path = "service-account.json")
 
-# Set non-interactive gargle options to prevent Shiny server lockups
-options(
-  gargle_oauth_email = TRUE,
-  gargle_oauth_cache = ".secrets"
+library(jsonlite)
+
+service_account <- tempfile(fileext = ".json")
+
+writeLines(
+  Sys.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
+  service_account
 )
 
-# Authenticate once at startup before starting Shiny server
-tryCatch({
-  gs4_auth(email = TRUE)
-}, error = function(e) {
-  gs4_deauth()
-})
+gs4_auth(path = service_account)
+
 
 # Helper for password input with show/hide eye toggle
 showablePasswordInput <- function(inputId, label, placeholder = "") {
