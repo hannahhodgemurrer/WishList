@@ -247,32 +247,56 @@ server <- function(input, output, session) {
   dashboard_ui <- function() {
     dashboardPage(
       skin = "purple",
-      dashboardHeader(title = "Wish Lists"),
-      dashboardSidebar(
-        sidebarMenu(
-          menuItem("My Wish List", tabName = "my_list", icon = icon("user")),
-          menuItem("Other's Wish Lists", tabName = "others_list", icon = icon("users"))
-        ),
-        hr(),
-        div(
-          style = "padding: 10px;",
-          h4(paste("Logged in as:", rv$current_user), style = "color:white;"),
+      dashboardHeader(
+        title = "Wish Lists",
+        tags$li(
+          class = "dropdown",
+          style = "padding: 8px 12px; display: flex; align-items: center; gap: 8px;",
+          span(paste("Logged in as:", rv$current_user), style = "color: white; font-weight: bold; margin-right: 4px;"),
           actionButton("refresh", "Refresh Data",
             icon = icon("sync"),
-            class = "btn-primary", style = "width: 100%; margin-top: 10px;"
+            class = "btn-sm btn-primary"
           ),
-          br(), br(),
           actionButton("logout_btn", "Log Out",
             icon = icon("sign-out-alt"),
-            class = "btn-default", style = "width: 100%;"
+            class = "btn-sm btn-default"
           )
         )
       ),
+      dashboardSidebar(disable = TRUE),
       dashboardBody(
-        tabItems(
+        tags$head(
+          tags$style(HTML("
+            .nav-pills > li.active > a, 
+            .nav-pills > li.active > a:focus, 
+            .nav-pills > li.active > a:hover {
+              background-color: #605ca8 !important;
+              color: #ffffff !important;
+              font-weight: bold;
+            }
+            .nav-pills > li > a {
+              font-size: 15px;
+              font-weight: 600;
+              border-radius: 6px;
+              padding: 8px 18px;
+              color: #444;
+              background-color: #e4e4e4;
+              margin-right: 8px;
+              margin-bottom: 8px;
+            }
+            .nav-pills > li > a:hover {
+              background-color: #d6d6d6;
+            }
+          "))
+        ),
+        tabsetPanel(
+          id = "top_tabs",
+          type = "pills",
           # Tab 1: My Wish List
-          tabItem(
-            tabName = "my_list",
+          tabPanel(
+            title = tagList(icon("user"), "My Wish List"),
+            value = "my_list",
+            br(),
             fluidRow(
               valueBoxOutput("my_name_box", width = 6),
               valueBoxOutput("my_item_count", width = 6)
@@ -313,8 +337,10 @@ server <- function(input, output, session) {
           ),
 
           # Tab 2: Others Wish List
-          tabItem(
-            tabName = "others_list",
+          tabPanel(
+            title = tagList(icon("users"), "Other's Wish Lists"),
+            value = "others_list",
+            br(),
             fluidRow(
               box(
                 title = "Filter by Person",
