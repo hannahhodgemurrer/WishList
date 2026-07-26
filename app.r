@@ -470,7 +470,7 @@ server <- function(input, output, session) {
     current_sel <- isolate(input$selected_other)
     selected_val <- if (!is.null(current_sel) && current_sel %in% other_names) current_sel else other_names[1]
 
-    updateSelectInput(session, "selected_other", choices = other_names, selected = selected_val)
+    updateSelectInput(session, "selected_other", choices = sort(other_names), selected = selected_val)
   })
 
   # Listen to 'Bought' dropdown changes from JavaScript
