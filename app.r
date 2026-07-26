@@ -753,40 +753,55 @@ server <- function(input, output, session) {
     )
   })
 
-  # Listen to inline edits on My Wish List
-  observeEvent(input$my_edit, {
-    info <- input$my_edit
-    df <- local_df()
-    req(df, info$row, info$col, !is.null(info$value))
+ # Listen to inline edits on My Wish List
+observeEvent(input$my_edit, {
+  info <- input$my_edit
+  df <- local_df()
+  req(df, info$row, info$col, !is.null(info$value))
 
-    row_idx <- as.integer(info$row)
-    col <- as.character(info$col)
+  row_idx <- as.integer(info$row)
+  col <- as.character(info$col)
 
-    if (row_idx >= 1 && row_idx <= nrow(df) && col %in% c("Item", "Size", "Link")) {
-      new_val <- if (nzchar(info$value)) info$value else NA_character_
-      df[[col]][row_idx] <- new_val
-      local_df(df)
+  if (row_idx >= 1 && row_idx <= nrow(df) && col %in% c("Item", "Size", "Link")) {
+    new_val <- if (nzchar(info$value)) info$value else NA_character_
 
-      # Write only this single cell immediately, rather than waiting for a
-      # "Save Changes" click that would rewrite the whole sheet.
-      sheet_row <- row_idx + 1
-      cell_col <- col_letter(df, col)
+    df[[col]][row_idx] <- new_val
 
-      tryCatch({
-        range_write(
-          ss = sheet_url,
-          data = data.frame(x = new_val, stringsAsFactors = FALSE),
-          sheet = "WishLists",
-          range = paste0(cell_col, sheet_row),
-          col_names = FALSE,
-          reformat = FALSE
-        )
-      }, error = function(e) {
-        showNotification(paste("Error saving edit:", e$message),
-                         type = "error", duration = 10)
-      })
-    }
+    # Only update app memory, don't save yet
+    local_df(df)
+  }
+})
+
+
+# Save button writes everything
+observeEvent(input$save_my_edits, {
+  df <- local_df()
+  req(df)
+
+  tryCatch({
+    range_write(
+      ss = sheet_url,
+      data = df,
+      sheet = "WishLists",
+      range = "A1",
+      col_names = TRUE,
+      reformat = FALSE
+    )
+
+    showNotification("Saved changes", type = "message")
+
+  }, error = function(e) {
+    showNotification(
+      paste("Error saving changes:", e$message),
+      type = "error",
+      duration = 10
+    )
   })
+})
+# "Save Changes" button: Item/Size/Link edits now save immediately per-cell
+  # as they're typed (see my_edit above), so this button just re-fetches the
+  # latest data from the sheet.
+
 
   # Store the pending delete row index
   pending_delete_row <- reactiveVal(NULL)
@@ -847,14 +862,6 @@ server <- function(input, output, session) {
         showNotification(paste("Error deleting row:", e$message), type = "error", duration = 10)
       })
     }
-  })
-
-  # "Save Changes" button: Item/Size/Link edits now save immediately per-cell
-  # as they're typed (see my_edit above), so this button just re-fetches the
-  # latest data from the sheet.
-  observeEvent(input$save_my_edits, {
-    local_df(fetch_sheet_data())
-    showNotification("Refreshed with latest data", type = "message")
   })
 
   # Tab 1: My Item Count Box
