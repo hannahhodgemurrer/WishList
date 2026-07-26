@@ -1,0 +1,949 @@
+library(shiny)
+library(shinydashboard)
+library(tidyverse)
+library(dplyr)
+library(googlesheets4)
+library(googledrive)
+library(reactable)
+library(htmltools)
+library(sodium)
+
+# Google Sheet URL
+sheet_url <- "https://docs.google.com/spreadsheets/d/1hj1fJLvWw_spf-cWZP9vDOT_eE8LAECKsvHo8WC5DD4/edit?usp=sharing"
+
+# Set non-interactive gargle options to prevent Shiny server lockups
+options(
+  gargle_oauth_email = TRUE,
+  gargle_oauth_cache = ".secrets"
+)
+
+# Authenticate once at startup before starting Shiny server
+tryCatch({
+  gs4_auth(email = TRUE)
+}, error = function(e) {
+  gs4_deauth()
+})
+
+# Helper for password input with show/hide eye toggle
+showablePasswordInput <- function(inputId, label, placeholder = "") {
+  div(
+    style = "position: relative; margin-bottom: 15px;",
+    passwordInput(inputId, label, placeholder = placeholder),
+    span(
+      icon("eye"),
+      style = "position: absolute; right: 12px; top: 32px; cursor: pointer; color: #666; font-size: 14px; padding: 4px; z-index: 10;",
+      title = "Toggle password visibility",
+      onclick = sprintf("
+        var el = document.getElementById('%s');
+        var icon = this.querySelector('i');
+        if (el.type === 'password') {
+          el.type = 'text';
+          icon.className = 'fa fa-eye-slash';
+        } else {
+          el.type = 'password';
+          icon.className = 'fa fa-eye';
+        }
+      ", inputId)
+    )
+  )
+}
+
+# ─── UI ──────────────────────────────────────────────────────────────────────
+# We use a simple fluidPage shell; the login form or dashboard is rendered
+# dynamically on the server side based on authentication state.
+ui <- fluidPage(
+  uiOutput("page_ui")
+)
+
+# ─── SERVER ──────────────────────────────────────────────────────────────────
+server <- function(input, output, session) {
+
+  # ── Auth state ───────────────────────────────────────────────────────────
+  rv <- reactiveValues(
+    logged_in    = FALSE,
+    current_user = NULL
+  )
+
+  # ── Fetch user/password data from PassCodes sheet ────────────────────────
+  users_df <- reactiveVal(NULL)
+
+  observe({
+    tryCatch({
+      df <- read_sheet(sheet_url, sheet = "PassCodes")
+      # Ensure PasswordHash column exists
+      if (!"PasswordHash" %in% names(df)) {
+        df$PasswordHash <- NA_character_
+      } else {
+        df$PasswordHash <- as.character(df$PasswordHash)
+        df$PasswordHash[!nzchar(df$PasswordHash)] <- NA_character_
+      }
+      users_df(df)
+    }, error = function(e) {
+      showNotification(paste("Could not load PassCodes sheet:", e$message),
+                       type = "error", duration = 10)
+    })
+  }) |> bindEvent(TRUE, once = TRUE)  # run once at startup
+
+  # ── Main page router ────────────────────────────────────────────────────
+  output$page_ui <- renderUI({
+    if (!rv$logged_in) {
+      # ── LOGIN PAGE ──────────────────────────────────────────────────────
+      login_ui()
+    } else {
+      # ── DASHBOARD ───────────────────────────────────────────────────────
+      dashboard_ui()
+    }
+  })
+
+  # ── Login UI builder ────────────────────────────────────────────────────
+  login_ui <- function() {
+    udf <- users_df()
+    if (is.null(udf)) {
+      return(div(
+        style = "text-align:center; margin-top:100px;",
+        h3("Loading users…"),
+        icon("spinner", class = "fa-spin fa-2x")
+      ))
+    }
+
+    fluidPage(
+      div(
+        style = "max-width: 400px; margin: 80px auto; padding: 30px;
+                 border: 1px solid #ddd; border-radius: 8px;
+                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);",
+        h2("Wish List Login", style = "text-align:center; color:#605ca8;"),
+        hr(),
+        selectInput("login_user", "Select your name",
+                    choices = sort(unique(na.omit(udf$Name)))),
+        uiOutput("login_fields"),
+        br(),
+        uiOutput("login_message")
+      )
+    )
+  }
+
+  # ── Dynamic login fields: password-create vs. password-enter ────────────
+  output$login_fields <- renderUI({
+    udf <- users_df()
+    req(udf, input$login_user)
+
+    row <- udf[udf$Name == input$login_user, ]
+    has_password <- nrow(row) > 0 && !is.na(row$PasswordHash[1]) && nzchar(row$PasswordHash[1])
+
+    if (has_password) {
+      tagList(
+        showablePasswordInput("pw", "Password"),
+        actionButton("login_btn", "Log In",
+                     icon = icon("sign-in-alt"),
+                     class = "btn-primary btn-block",
+                     style = "width:100%;")
+      )
+    } else {
+      tagList(
+        showablePasswordInput("new_pw", "Create Password"),
+        showablePasswordInput("confirm_pw", "Confirm Password"),
+        actionButton("create_btn", "Create Account",
+                     icon = icon("user-plus"),
+                     class = "btn-success btn-block",
+                     style = "width:100%;")
+      )
+    }
+  })
+
+  # ── Create password ─────────────────────────────────────────────────────
+  observeEvent(input$create_btn, {
+    req(input$new_pw, input$confirm_pw)
+
+    if (input$new_pw != input$confirm_pw) {
+      output$login_message <- renderUI(
+        div(class = "alert alert-danger", "Passwords do not match.")
+      )
+      return()
+    }
+
+    if (nchar(input$new_pw) < 4) {
+      output$login_message <- renderUI(
+        div(class = "alert alert-danger", "Password must be at least 4 characters.")
+      )
+      return()
+    }
+
+    hash <- password_store(input$new_pw)
+
+    # Update local copy
+    udf <- users_df()
+    udf$PasswordHash[udf$Name == input$login_user] <- hash
+    users_df(udf)
+
+    # Persist to Google Sheet
+    tryCatch({
+      range_write(
+        ss    = sheet_url,
+        data  = udf,
+        sheet = "PassCodes",
+        range = "A1",
+        col_names = TRUE,
+        reformat  = FALSE
+      )
+      showNotification("Password created! You can now log in.", type = "message")
+    }, error = function(e) {
+      showNotification(paste("Error saving password:", e$message),
+                       type = "error", duration = 10)
+    })
+  })
+
+  # ── Log in ──────────────────────────────────────────────────────────────
+  observeEvent(input$login_btn, {
+    req(input$pw, input$login_user)
+
+    udf <- users_df()
+    row <- udf[udf$Name == input$login_user, ]
+
+    if (nrow(row) == 0 || is.na(row$PasswordHash[1])) {
+      output$login_message <- renderUI(
+        div(class = "alert alert-danger", "No account found. Please create a password first.")
+      )
+      return()
+    }
+
+    if (password_verify(row$PasswordHash[1], input$pw)) {
+      rv$logged_in    <- TRUE
+      rv$current_user <- input$login_user
+    } else {
+      output$login_message <- renderUI(
+        div(class = "alert alert-danger", "Incorrect password. Please try again.")
+      )
+    }
+  })
+
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── DASHBOARD (rendered after login) ─────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════
+
+  dashboard_ui <- function() {
+    dashboardPage(
+      skin = "purple",
+      dashboardHeader(title = "Wish Lists"),
+
+      dashboardSidebar(
+        sidebarMenu(
+          menuItem("My Wish List", tabName = "my_list", icon = icon("user")),
+          menuItem("Other's Wish Lists", tabName = "others_list", icon = icon("users"))
+        ),
+        hr(),
+        div(
+          style = "padding: 10px;",
+          h4(paste("Logged in as:", rv$current_user), style = "color:white;"),
+          actionButton("refresh", "Refresh Data", icon = icon("sync"),
+                       class = "btn-primary", style = "width: 100%; margin-top: 10px;"),
+          br(), br(),
+          actionButton("logout_btn", "Log Out", icon = icon("sign-out-alt"),
+                       class = "btn-default", style = "width: 100%;")
+        )
+      ),
+
+      dashboardBody(
+        tabItems(
+          # Tab 1: My Wish List
+          tabItem(
+            tabName = "my_list",
+            fluidRow(
+              valueBoxOutput("my_name_box", width = 6),
+              valueBoxOutput("my_item_count", width = 6)
+            ),
+            fluidRow(
+              box(
+                title = "Add New Wish List Item",
+                status = "success",
+                solidHeader = TRUE,
+                collapsible = TRUE,
+                collapsed = FALSE,
+                width = 12,
+                fluidRow(
+                  column(4, textInput("add_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
+                  column(3, textInput("add_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
+                  column(5, textInput("add_link", "URL / Product Link", placeholder = "e.g., https://..."))
+                ),
+                div(
+                  style = "text-align: right;",
+                  actionButton("submit_item", "Add Item", icon = icon("plus"), class = "btn-success")
+                )
+              )
+            ),
+            fluidRow(
+              box(
+                title = "My Wish List Items",
+                status = "primary",
+                solidHeader = TRUE,
+                width = 12,
+                reactableOutput("my_wishlist_table"),
+                hr(),
+                div(
+                  style = "text-align: right;",
+                  actionButton("save_my_edits", "Save Changes", icon = icon("save"), class = "btn-success btn-lg")
+                )
+              )
+            )
+          ),
+
+          # Tab 2: Others Wish List
+          tabItem(
+            tabName = "others_list",
+            fluidRow(
+              box(
+                title = "Filter by Person",
+                status = "info",
+                solidHeader = TRUE,
+                width = 12,
+                selectInput("selected_other", "Select Person:", choices = NULL)
+              )
+            ),
+            fluidRow(
+              valueBoxOutput("other_item_count", width = 6),
+              valueBoxOutput("other_bought_count", width = 6)
+            ),
+            fluidRow(
+              box(
+                title = "Add Item to Their Wish List",
+                status = "success",
+                solidHeader = TRUE,
+                collapsible = TRUE,
+                collapsed = FALSE,
+                width = 12,
+                fluidRow(
+                  column(4, textInput("add_other_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
+                  column(3, textInput("add_other_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
+                  column(5, textInput("add_other_link", "URL / Product Link", placeholder = "e.g., https://..."))
+                ),
+                div(
+                  style = "text-align: right;",
+                  uiOutput("submit_other_item_btn_ui")
+                )
+              )
+            ),
+            fluidRow(
+              box(
+                title = "Wish List Items & Purchase Status",
+                status = "info",
+                solidHeader = TRUE,
+                width = 12,
+                reactableOutput("others_wishlist_table"),
+                hr(),
+                div(
+                  style = "text-align: right;",
+                  actionButton("save_purchases", "Save Updates", icon = icon("save"), class = "btn-success btn-lg")
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  }
+
+  # ── Log out ─────────────────────────────────────────────────────────────
+  observeEvent(input$logout_btn, {
+    rv$logged_in    <- FALSE
+    rv$current_user <- NULL
+  })
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # ── WISH LIST DATA (same logic as app.r, using rv$current_user) ──────
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # Main in-memory reactive data frame for wish list items
+  local_df <- reactiveVal(NULL)
+
+  # Function to fetch latest data from Google Sheet
+  fetch_sheet_data <- function() {
+    df <- read_sheet(sheet_url, sheet = "WishLists")
+
+    # Ensure 'Bought' column exists and defaults to "No"
+    if (!"Bought" %in% names(df)) {
+      df$Bought <- "No"
+    } else {
+      df$Bought <- ifelse(is.na(df$Bought) | !nzchar(as.character(df$Bought)), "No", as.character(df$Bought))
+    }
+
+    # Ensure 'Who Bought' column exists
+    if (!"Who Bought" %in% names(df)) {
+      df$`Who Bought` <- NA_character_
+    } else {
+      df$`Who Bought` <- ifelse(is.na(df$`Who Bought`) | !nzchar(as.character(df$`Who Bought`)), NA_character_, as.character(df$`Who Bought`))
+    }
+
+    # Ensure 'Added By' column exists
+    if (!"Added By" %in% names(df)) {
+      df$`Added By` <- NA_character_
+    } else {
+      df$`Added By` <- ifelse(is.na(df$`Added By`) | !nzchar(as.character(df$`Added By`)), NA_character_, as.character(df$`Added By`))
+    }
+
+    df
+  }
+
+  # Load data on login and on manual refresh
+  observe({
+    req(rv$logged_in)
+    input$refresh
+    data <- fetch_sheet_data()
+    local_df(data)
+  })
+
+  # Get list of unique non-NA names
+  available_names <- reactive({
+    df <- local_df()
+    req(df)
+    unique(na.omit(df$Name))
+  })
+
+  # Define group memberships
+  group_1_members <- c("Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
+                       "Sara", "Charlie", "Emma", "Michael", "Ethan", "Violet", "Pepper", "Mark",
+                       "Dixie", "Wrenley", "Dixie/Wrenley", "Dixie / Wrenley")
+
+  group_2_members <- c("Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
+                       "Kim", "Rob", "Jackie", "Nick", "Sal")
+
+  # Filter available names based on currently logged in user's group(s)
+  get_allowed_names <- function(current_user, names_vec) {
+    if (is.null(current_user) || !nzchar(current_user)) return(names_vec)
+
+    allowed <- character(0)
+
+    if (any(tolower(group_1_members) == tolower(current_user))) {
+      allowed <- c(allowed, group_1_members)
+    }
+
+    if (any(tolower(group_2_members) == tolower(current_user))) {
+      allowed <- c(allowed, group_2_members)
+    }
+
+    if (length(allowed) == 0) return(names_vec)
+
+    allowed_clean <- unique(allowed)
+    matched_names <- names_vec[tolower(names_vec) %in% tolower(allowed_clean)]
+    return(matched_names)
+  }
+
+  # Keep dropdown choices updated for Tab 2 while preserving current selection & group permissions
+  observe({
+    names <- available_names()
+    user <- rv$current_user
+    req(names)
+
+    allowed_names <- get_allowed_names(user, names)
+    other_names <- setdiff(allowed_names, user)
+    if (length(other_names) == 0) other_names <- allowed_names
+
+    current_sel <- isolate(input$selected_other)
+    selected_val <- if (!is.null(current_sel) && current_sel %in% other_names) current_sel else other_names[1]
+
+    updateSelectInput(session, "selected_other", choices = other_names, selected = selected_val)
+  })
+
+  # Listen to 'Bought' dropdown changes from JavaScript
+  observeEvent(input$bought_change, {
+    info <- input$bought_change
+    df <- local_df()
+    req(df, info$id, info$value)
+
+    row_idx <- as.integer(info$id)
+    if (row_idx >= 1 && row_idx <= nrow(df)) {
+      df$Bought[row_idx] <- info$value
+
+      # Auto-fill Who Bought with the logged-in user when marked Yes;
+      # clear it when switched back to No
+      if (info$value == "Yes" && !is.null(rv$current_user)) {
+        df$`Who Bought`[row_idx] <- rv$current_user
+      } else if (info$value == "No") {
+        df$`Who Bought`[row_idx] <- NA_character_
+      }
+
+      local_df(df)
+    }
+  })
+
+  # Listen to 'Who Bought' dropdown changes from JavaScript
+  observeEvent(input$buyer_change, {
+    info <- input$buyer_change
+    df <- local_df()
+    req(df, info$id)
+
+    row_idx <- as.integer(info$id)
+    val <- if (nzchar(info$value)) info$value else NA_character_
+
+    if (row_idx >= 1 && row_idx <= nrow(df)) {
+      df$`Who Bought`[row_idx] <- val
+      # Automatically set Bought="Yes" if a buyer is selected
+      if (!is.na(val)) {
+        df$Bought[row_idx] <- "Yes"
+      }
+      local_df(df)
+    }
+  })
+
+  # Add New Item to Google Sheet
+  observeEvent(input$submit_item, {
+    req(rv$current_user)
+
+    item_name <- trimws(input$add_item)
+    if (!nzchar(item_name)) {
+      showNotification("Please enter an Item Name before adding.", type = "warning")
+      return()
+    }
+
+    item_size <- if (nzchar(trimws(input$add_size))) trimws(input$add_size) else NA_character_
+    item_link <- if (nzchar(trimws(input$add_link))) trimws(input$add_link) else NA_character_
+
+    new_row <- data.frame(
+      Name = rv$current_user,
+      Item = item_name,
+      Size = item_size,
+      Link = item_link,
+      Bought = "No",
+      `Who Bought` = NA_character_,
+      `Added By` = rv$current_user,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    tryCatch({
+      sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
+      showNotification(paste("Successfully added", item_name), type = "message")
+
+      updateTextInput(session, "add_item", value = "")
+      updateTextInput(session, "add_size", value = "")
+      updateTextInput(session, "add_link", value = "")
+
+      # Re-fetch dataset
+      local_df(fetch_sheet_data())
+
+    }, error = function(e) {
+      showNotification(
+        paste("Write error:", e$message),
+        type = "error",
+        duration = 10
+      )
+    })
+  })
+
+  # Dynamic button label for adding item on others wish list tab
+  output$submit_other_item_btn_ui <- renderUI({
+    req(input$selected_other)
+    actionButton("submit_other_item", paste("Add Item for", input$selected_other), icon = icon("plus"), class = "btn-success")
+  })
+
+  # Add Item to Someone Else's Wish List
+  observeEvent(input$submit_other_item, {
+    req(rv$current_user, input$selected_other)
+
+    item_name <- trimws(input$add_other_item)
+    if (!nzchar(item_name)) {
+      showNotification("Please enter an Item Name before adding.", type = "warning")
+      return()
+    }
+
+    item_size <- if (nzchar(trimws(input$add_other_size))) trimws(input$add_other_size) else NA_character_
+    item_link <- if (nzchar(trimws(input$add_other_link))) trimws(input$add_other_link) else NA_character_
+
+    new_row <- data.frame(
+      Name = input$selected_other,
+      Item = item_name,
+      Size = item_size,
+      Link = item_link,
+      Bought = "No",
+      `Who Bought` = NA_character_,
+      `Added By` = rv$current_user,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    tryCatch({
+      sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
+      showNotification(paste("Successfully added", item_name, "for", input$selected_other, "!"), type = "message")
+
+      updateTextInput(session, "add_other_item", value = "")
+      updateTextInput(session, "add_other_size", value = "")
+      updateTextInput(session, "add_other_link", value = "")
+
+      # Re-fetch dataset
+      local_df(fetch_sheet_data())
+
+    }, error = function(e) {
+      showNotification(
+        paste("Write error:", e$message),
+        type = "error",
+        duration = 10
+      )
+    })
+  })
+
+  # Save Purchase Status Updates for Others Wish List
+  observeEvent(input$save_purchases, {
+    df <- local_df()
+    req(df)
+
+    tryCatch({
+      range_write(
+        ss = sheet_url,
+        data = df,
+        sheet = "WishLists",
+        range = "A1",
+        col_names = TRUE,
+        reformat = FALSE
+      )
+      showNotification("Saved purchase updates", type = "message")
+      local_df(fetch_sheet_data())
+    }, error = function(e) {
+      showNotification(paste("Error saving updates:", e$message), type = "error", duration = 10)
+    })
+  })
+
+  # Tab 1: My Wish List Table (editable, bold Item header & cells, sorted alphabetically)
+  output$my_wishlist_table <- renderReactable({
+    df <- local_df()
+    req(df, rv$current_user)
+    my_df <- df %>%
+      mutate(row_id = row_number()) %>%
+      filter(Name == rv$current_user & (is.na(`Added By`) | `Added By` == rv$current_user)) %>%
+      arrange(tolower(ifelse(is.na(Item), "", Item)))
+
+    reactable(
+      my_df %>% select(Item, Size, Link, row_id),
+      pagination = FALSE,
+      wrap = TRUE,
+      filterable = TRUE,
+      searchable = TRUE,
+      striped = TRUE,
+      highlight = TRUE,
+      bordered = TRUE,
+      language = reactableLang(
+        searchPlaceholder = "Search items...",
+        filterPlaceholder = "Filter..."
+      ),
+      columns = list(
+        Item = colDef(
+          name = "Item",
+          headerStyle = list(fontWeight = "bold"),
+          minWidth = 180,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
+            cur_val <- if (is.null(value) || is.na(value)) "" else as.character(value)
+            tags$input(
+              type = "text",
+              value = cur_val,
+              placeholder = "Item name...",
+              onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Item', value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = "padding: 4px 6px; font-size: 13px; font-weight: bold; width: 100%;"
+            )
+          }
+        ),
+        Size = colDef(
+          name = "Size / Options",
+          minWidth = 120,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
+            cur_val <- if (is.null(value) || is.na(value)) "" else as.character(value)
+            tags$input(
+              type = "text",
+              value = cur_val,
+              placeholder = "e.g. Medium",
+              onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Size', value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = "padding: 4px 6px; font-size: 13px; width: 100%;"
+            )
+          }
+        ),
+        Link = colDef(
+          name = "Link",
+          minWidth = 200,
+          cell = function(value, index) {
+            row_id <- my_df$row_id[index]
+            cur_val <- if (is.null(value) || is.na(value)) "" else as.character(value)
+            tagList(
+              tags$input(
+                type = "text",
+                value = cur_val,
+                placeholder = "https://...",
+                onchange = sprintf("Shiny.setInputValue('my_edit', {row: %d, col: 'Link', value: this.value}, {priority: 'event'})", row_id),
+                class = "form-control",
+                style = "padding: 4px 6px; font-size: 13px; display: inline-block; width: calc(100% - 36px);"
+              ),
+              if (nzchar(cur_val)) {
+                tags$a(
+                  href = cur_val, target = "_blank", rel = "noopener noreferrer",
+                  icon("external-link-alt"),
+                  style = "margin-left: 6px; vertical-align: middle;"
+                )
+              }
+            )
+          }
+        ),
+        row_id = colDef(
+          name = "",
+          sortable = FALSE,
+          filterable = FALSE,
+          width = 85,
+          cell = function(value) {
+            tags$button(
+              onclick = sprintf("Shiny.setInputValue('delete_my_row', {row: %d, nonce: Math.random()}, {priority: 'event'})", value),
+              class = "btn btn-danger btn-sm",
+              style = "padding: 2px 8px; font-size: 12px;",
+              icon("trash"), " Delete"
+            )
+          }
+        )
+      )
+    )
+  })
+
+  # Listen to inline edits on My Wish List
+  observeEvent(input$my_edit, {
+    info <- input$my_edit
+    df <- local_df()
+    req(df, info$row, info$col, !is.null(info$value))
+
+    row_idx <- as.integer(info$row)
+    col <- as.character(info$col)
+
+    if (row_idx >= 1 && row_idx <= nrow(df) && col %in% c("Item", "Size", "Link")) {
+      new_val <- if (nzchar(info$value)) info$value else NA_character_
+      df[[col]][row_idx] <- new_val
+      local_df(df)
+    }
+  })
+
+  # Store the pending delete row index
+  pending_delete_row <- reactiveVal(NULL)
+
+  # Step 1: Show confirmation modal when delete is clicked
+  observeEvent(input$delete_my_row, {
+    info <- input$delete_my_row
+    df <- local_df()
+    req(df, info$row)
+
+    row_idx <- as.integer(info$row)
+    if (row_idx >= 1 && row_idx <= nrow(df)) {
+      pending_delete_row(row_idx)
+      item_name <- as.character(df$Item[row_idx])
+
+      showModal(modalDialog(
+        title = "Confirm Deletion",
+        tags$p("Are you sure you want to delete this item?"),
+        tags$p(tags$strong(item_name), style = "font-size: 16px; color: #d9534f;"),
+        tags$p("This action cannot be undone."),
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton("confirm_delete", "Yes, Delete", class = "btn-danger", icon = icon("trash"))
+        ),
+        easyClose = TRUE
+      ))
+    }
+  })
+
+  # Step 2: Perform deletion after confirmation
+  observeEvent(input$confirm_delete, {
+    row_idx <- pending_delete_row()
+    df <- local_df()
+    req(df, row_idx)
+
+    if (row_idx >= 1 && row_idx <= nrow(df)) {
+      df <- df[-row_idx, ]
+      local_df(df)
+      pending_delete_row(NULL)
+      removeModal()
+
+      # Immediately persist the deletion to Google Sheet
+      tryCatch({
+        range_clear(ss = sheet_url, sheet = "WishLists", range = "A1:ZZ")
+        range_write(
+          ss = sheet_url,
+          data = df,
+          sheet = "WishLists",
+          range = "A1",
+          col_names = TRUE,
+          reformat = FALSE
+        )
+        showNotification("Row deleted", type = "message")
+      }, error = function(e) {
+        showNotification(paste("Error deleting row:", e$message), type = "error", duration = 10)
+      })
+    }
+  })
+
+  # Save My Wish List edits to Google Sheet
+  observeEvent(input$save_my_edits, {
+    df <- local_df()
+    req(df)
+
+    tryCatch({
+      range_write(
+        ss = sheet_url,
+        data = df,
+        sheet = "WishLists",
+        range = "A1",
+        col_names = TRUE,
+        reformat = FALSE
+      )
+      showNotification("Your wish list changes have been saved", type = "message")
+      local_df(fetch_sheet_data())
+    }, error = function(e) {
+      showNotification(paste("Error saving changes:", e$message), type = "error", duration = 10)
+    })
+  })
+
+  # Tab 1: My Item Count Box
+  output$my_item_count <- renderValueBox({
+    df <- local_df()
+    req(df, rv$current_user)
+    count <- sum(df$Name == rv$current_user & (is.na(df$`Added By`) | df$`Added By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
+    valueBox(count, "Items on Your Wish List", icon = icon("gift"), color = "teal")
+  })
+
+  # Tab 1: My Name Box
+  output$my_name_box <- renderValueBox({
+    req(rv$current_user)
+    valueBox(rv$current_user, "Active Profile", icon = icon("user-check"), color = "purple")
+  })
+
+  # Tab 2: Other Person Item Count Box
+  output$other_item_count <- renderValueBox({
+    df <- local_df()
+    req(df, input$selected_other, rv$current_user)
+    allowed_names <- get_allowed_names(rv$current_user, available_names())
+    req(input$selected_other %in% allowed_names)
+    count <- sum(df$Name == input$selected_other & !is.na(df$Item), na.rm = TRUE)
+    valueBox(count, paste("Total Items for", input$selected_other), icon = icon("gift"), color = "teal")
+  })
+
+  # Tab 2: Other Person Bought Count Box
+  output$other_bought_count <- renderValueBox({
+    df <- local_df()
+    req(df, input$selected_other, rv$current_user)
+    allowed_names <- get_allowed_names(rv$current_user, available_names())
+    req(input$selected_other %in% allowed_names)
+    bought_count <- sum(df$Name == input$selected_other & df$Bought == "No", na.rm = TRUE)
+    valueBox(bought_count, paste("Items Available"), icon = icon("shopping-cart"), color = "green")
+  })
+
+  # Tab 2: Others Wish List Table (bold Item header & cell text, text wrapped, sorted alphabetically with Bought=Yes at bottom)
+  output$others_wishlist_table <- renderReactable({
+    df <- local_df()
+    req(df, input$selected_other, rv$current_user)
+
+    allowed_names <- get_allowed_names(rv$current_user, available_names())
+    req(input$selected_other %in% allowed_names)
+
+    df_with_id <- df %>% mutate(row_id = row_number())
+    others_df <- df_with_id %>%
+      filter(Name == input$selected_other) %>%
+      arrange(Bought == "Yes", tolower(ifelse(is.na(Item), "", Item)))
+
+    names_choices <- allowed_names
+
+    reactable(
+      others_df %>% select(Item, Size, Link, Bought, `Who Bought`, `Added By`),
+      pagination = FALSE,
+      wrap = TRUE,
+      filterable = TRUE,
+      searchable = TRUE,
+      striped = TRUE,
+      highlight = TRUE,
+      bordered = TRUE,
+      rowStyle = function(index) {
+        if (others_df$Bought[index] == "Yes") {
+          list(backgroundColor = "#fce8e6")
+        }
+      },
+      language = reactableLang(
+        searchPlaceholder = "Search items...",
+        filterPlaceholder = "Filter..."
+      ),
+      columns = list(
+        Item = colDef(
+          headerStyle = list(fontWeight = "bold"),
+          style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
+          cell = function(value) {
+            tags$div(
+              style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
+              value
+            )
+          }
+        ),
+        Size = colDef(
+          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word")
+        ),
+        Link = colDef(
+          cell = function(value) {
+            if (!is.na(value) && nzchar(value)) {
+              tags$a(href = value, target = "_blank", rel = "noopener noreferrer", "View Link")
+            } else {
+              "\u2014"
+            }
+          }
+        ),
+        Bought = colDef(
+          name = "Bought?",
+          cell = function(value, index) {
+            row_id <- others_df$row_id[index]
+            current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "No", as.character(value))
+            is_yes <- (current_val == "Yes")
+
+            select_style <- if (is_yes) {
+              "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px; background-color: #d9534f; color: white; font-weight: bold; border-color: #d43f3a;"
+            } else {
+              "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px;"
+            }
+
+            tags$select(
+              onchange = sprintf("Shiny.setInputValue('bought_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = select_style,
+              tags$option(value = "No", selected = if (!is_yes) "selected" else NULL, "No"),
+              tags$option(value = "Yes", selected = if (is_yes) "selected" else NULL, "Yes")
+            )
+          }
+        ),
+        `Who Bought` = colDef(
+          name = "Who Bought It",
+          cell = function(value, index) {
+            row_id <- others_df$row_id[index]
+            current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "", as.character(value))
+
+            opt_list <- list(tags$option(value = "", selected = if (!nzchar(current_val)) "selected" else NULL, "-- Select --"))
+            for (nm in names_choices) {
+              opt_list[[length(opt_list) + 1]] <- tags$option(
+                value = nm,
+                selected = if (current_val == nm) "selected" else NULL,
+                nm
+              )
+            }
+
+            tags$select(
+              onchange = sprintf("Shiny.setInputValue('buyer_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 140px;",
+              opt_list
+            )
+          }
+        ),
+        `Added By` = colDef(
+          name = "Entered By",
+          cell = function(value, index) {
+            owner_name <- others_df$Name[index]
+            if (is.na(value) || !nzchar(as.character(value))) {
+              owner_name
+            } else {
+              as.character(value)
+            }
+          }
+        )
+      )
+    )
+  })
+}
+
+shinyApp(ui = ui, server = server)
