@@ -7,7 +7,7 @@ library(googledrive)
 library(reactable)
 library(htmltools)
 library(sodium)
-
+library(rsconnect)
 # Google Sheet URL
 sheet_url <- "https://docs.google.com/spreadsheets/d/1hj1fJLvWw_spf-cWZP9vDOT_eE8LAECKsvHo8WC5DD4/edit?usp=sharing"
 
