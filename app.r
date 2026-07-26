@@ -705,34 +705,63 @@ server <- function(input, output, session) {
       highlight = TRUE,
       bordered = TRUE,
       columns = list(
-        Item = colDef(
-          name = "Item",
-          headerStyle = list(fontWeight = "bold"),
-          minWidth = 180,
-          style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
-          cell = function(value, index) {
-            row_id <- my_df$row_id[index]
-            cur_val <- ifelse(is.na(value), "", as.character(value))
- tags$div(
-              style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
-              value
-            )
+Item = colDef(
+  name = "Item",
+  headerStyle = list(fontWeight = "bold"),
+  minWidth = 180,
 
-            tags$input(
-              type = "text",
-              value = cur_val,
-              placeholder = "Item name...",
-              onblur = sprintf(
-                "Shiny.setInputValue('my_edit', {row:%d, col:'Item', value:this.value}, {priority:'event'})",
-                row_id
-              ),
-              onkeydown = "event.stopPropagation();",
-              onclick = "event.stopPropagation();",
-              class = "form-control",
-              style = "padding:4px 6px; font-size:13px; font-weight:bold; width:100%;"
-            )
-          }
-        ),
+  style = list(
+    whiteSpace = "pre-wrap",
+    wordBreak = "break-word"
+  ),
+
+  cell = function(value, index) {
+
+    row_id <- my_df$row_id[index]
+
+    cur_val <- ifelse(
+      is.na(value),
+      "",
+      as.character(value)
+    )
+
+
+    tags$textarea(
+      value = cur_val,
+
+      placeholder = "Item name...",
+
+      onblur = sprintf(
+        "Shiny.setInputValue(
+          'my_edit',
+          {
+            row:%d,
+            col:'Item',
+            value:this.value
+          },
+          {priority:'event'}
+        )",
+        row_id
+      ),
+
+      onkeydown = "event.stopPropagation();",
+
+      onclick = "event.stopPropagation();",
+
+      class = "form-control",
+
+      style =
+        "padding:4px 6px;
+         font-size:13px;
+         font-weight:bold;
+         width:100%;
+         min-height:38px;
+         resize:vertical;
+         white-space:pre-wrap;
+         overflow-wrap:break-word;"
+    )
+  }
+),
         Size = colDef(
           name = "Size / Options",
           minWidth = 120,
