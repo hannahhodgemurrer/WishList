@@ -850,79 +850,64 @@ output$my_wishlist_table <- renderReactable({
 })
 
 
-
-# Store inline edits temporarily
-observeEvent(input$my_edit, {
-
-  info <- input$my_edit
-
-  req(
-    info$row,
-    info$col,
-    !is.null(info$value)
-  )
-
-  if (!is.null(info$col) &&
-      info$col %in% c("Item", "Size", "Link")) {
-
-    if (is.null(rv$my_edits)) {
-      rv$my_edits <- list()
-    }
-
-    key <- paste(
-      as.integer(info$row),
-      info$col,
-      sep = "_"
-    )
-
-    rv$my_edits[[key]] <- info$value
-  }
-})
-
-
-
-# Save all edits to Google Sheet
 observeEvent(input$save_my_edits, {
-
-  df <- local_df()
-
-  req(df)
 
   edits <- rv$my_edits
 
-  if (!is.null(edits) && length(edits) > 0) {
-
-    for (key in names(edits)) {
-
-      parts <- strsplit(key, "_")[[1]]
-
-      row_idx <- as.integer(parts[1])
-      col_name <- parts[2]
-
-      df[row_idx, col_name] <-
-        if (nzchar(edits[[key]])) {
-          edits[[key]]
-        } else {
-          NA_character_
-        }
-    }
-
-    local_df(df)
-  }
+  req(edits, length(edits) > 0)
 
 
   tryCatch({
 
-    range_write(
-      ss = sheet_url,
-      data = df,
-      sheet = "WishLists",
-      range = "A1",
-      col_names = TRUE,
-      reformat = FALSE
-    )
+    for (key in names(edits)) {
 
 
+      parts <- strsplit(key, "_")[[1]]
+
+      row_id <- as.integer(parts[1])
+
+      col_name <- parts[2]
+
+
+      # Convert dataframe column name to sheet column letter
+      col_num <- match(
+        col_name,
+        names(local_df())
+      )
+
+
+      col_letter <- int2col(col_num)
+
+
+      # Google Sheets range
+      cell_range <- paste0(
+        col_letter,
+        row_id
+      )
+
+
+      value_to_write <- edits[[key]]
+
+      if (!nzchar(value_to_write)) {
+        value_to_write <- NA
+      }
+
+
+      range_write(
+        ss = sheet_url,
+        data = data.frame(
+          value = value_to_write
+        ),
+        sheet = "WishLists",
+        range = cell_range,
+        col_names = FALSE,
+        reformat = FALSE
+      )
+
+    }
+
+
+    # Clear pending edits
     rv$my_edits <- list()
 
 
@@ -932,7 +917,18 @@ observeEvent(input$save_my_edits, {
     )
 
 
-  }, error = function(e) {
+    # Refresh local copy after successful writes
+    local_df(
+      read_sheet(
+        sheet_url,
+        sheet = "WishLists"
+      )
+    )
+
+
+  },
+
+  error = function(e) {
 
     showNotification(
       paste(
@@ -942,37 +938,10 @@ observeEvent(input$save_my_edits, {
       type = "error",
       duration = 10
     )
+
   })
 
 })
-
-  # Store the pending delete row index
-  pending_delete_row <- reactiveVal(NULL)
-
-  # Step 1: Show confirmation modal when delete is clicked
-  observeEvent(input$delete_my_row, {
-    info <- input$delete_my_row
-    df <- local_df()
-    req(df, info$row)
-
-    row_idx <- as.integer(info$row)
-    if (row_idx >= 1 && row_idx <= nrow(df)) {
-      pending_delete_row(row_idx)
-      item_name <- as.character(df$Item[row_idx])
-
-      showModal(modalDialog(
-        title = "Confirm Deletion",
-        tags$p("Are you sure you want to delete this item?"),
-        tags$p(tags$strong(item_name), style = "font-size: 16px; color: #d9534f;"),
-        tags$p("This action cannot be undone."),
-        footer = tagList(
-          modalButton("Cancel"),
-          actionButton("confirm_delete", "Yes, Delete", class = "btn-danger", icon = icon("trash"))
-        ),
-        easyClose = TRUE
-      ))
-    }
-  })
 
   # Step 2: Perform deletion after confirmation
   observeEvent(input$confirm_delete, {
