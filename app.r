@@ -985,8 +985,15 @@ server <- function(input, output, session) {
               onkeydown = "event.stopPropagation();",
               onclick = "event.stopPropagation();",
               class = "form-control",
-              style = "padding:4px 6px; font-size:13px; width:100%;"
-            )
+style =
+        "padding:4px 6px;
+         font-size:13px;
+         font-weight:bold;
+         width:100%;
+         min-height:38px;
+         resize:vertical;
+         white-space:pre-wrap;
+         overflow-wrap:break-word;"            )
           }
         ),
         Link = colDef(
@@ -1296,7 +1303,7 @@ server <- function(input, output, session) {
             backgroundColor = "#dce3ea",
             fontWeight      = "bold",
             fontSize        = "14px",
-            color           = "#1a252f"
+            color           = "#271a2fff"
           ))
         }
         if (isTRUE(grouped_df$Bought[index] == "Yes")) {
