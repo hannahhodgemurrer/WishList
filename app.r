@@ -995,7 +995,7 @@ style =
         ),
         Link = colDef(
           name = "Link",
-          minWidth = 220,
+          minWidth = 100,
           cell = function(value, index) {
             row_id <- my_df$row_id[index]
             cur_val <- ifelse(is.na(value), "", as.character(value))
