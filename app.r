@@ -853,7 +853,7 @@ server <- function(input, output, session) {
       columns = list(Category = colDef(
           name = "Category",
           headerStyle = list(fontWeight = "bold"),
-  minWidth = 80,
+  minWidth = 85,
 
   style = list(
     whiteSpace = "pre-wrap",
@@ -910,7 +910,7 @@ server <- function(input, output, session) {
         Item = colDef(
           name = "Item",
           headerStyle = list(fontWeight = "bold"),
-  minWidth = 180,
+  minWidth = 85,
 
   style = list(
     whiteSpace = "pre-wrap",
@@ -966,7 +966,7 @@ server <- function(input, output, session) {
 ),
         Size = colDef(
           name = "Size / Options",
-          minWidth = 120,
+          minWidth = 50,
           cell = function(value, index) {
             row_id <- my_df$row_id[index]
             cur_val <- ifelse(is.na(value), "", as.character(value))
