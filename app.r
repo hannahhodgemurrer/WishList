@@ -1307,10 +1307,10 @@ style =
       rowStyle = function(index) {
         if (is_hdr(index)) {
           return(list(
-            backgroundColor = "#ae5294ff",
+            backgroundColor = "#f399dfff",
             fontWeight      = "bold",
             fontSize        = "14px",
-            color           = "#9616e6ff"
+            color           = "#1d032dff"
           ))
         }
         if (isTRUE(grouped_df$Bought[index] == "Yes")) {
