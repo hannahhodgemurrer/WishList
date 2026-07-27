@@ -853,7 +853,7 @@ server <- function(input, output, session) {
       columns = list(Category = colDef(
           name = "Category",
           headerStyle = list(fontWeight = "bold"),
-  minWidth = 180,
+  minWidth = 80,
 
   style = list(
     whiteSpace = "pre-wrap",
