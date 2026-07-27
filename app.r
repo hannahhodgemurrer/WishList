@@ -957,7 +957,7 @@ server <- function(input, output, session) {
          font-size:13px;
          font-weight:bold;
          width:100%;
-         min-height:38px;
+         min-height:55px;
          resize:vertical;
          white-space:pre-wrap;
          overflow-wrap:break-word;"
