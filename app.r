@@ -16,7 +16,7 @@ sheet_url <- "https://docs.google.com/spreadsheets/d/1Sjx9ETDXCIeTnuDJ_aUokqzt-m
 ### use locally
  #gs4_auth(path = "service-account.json")
 
-#service_account <- tempfile(fileext = ".json")
+service_account <- tempfile(fileext = ".json")
 
  writeLines(
    Sys.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
