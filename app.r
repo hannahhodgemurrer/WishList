@@ -1307,7 +1307,7 @@ style =
       rowStyle = function(index) {
         if (is_hdr(index)) {
           return(list(
-            backgroundColor = "#c61393ff",
+            backgroundColor = "#ae5294ff",
             fontWeight      = "bold",
             fontSize        = "14px",
             color           = "#9616e6ff"
