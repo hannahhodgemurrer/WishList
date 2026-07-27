@@ -314,12 +314,7 @@ server <- function(input, output, session) {
                 collapsed = FALSE,
                 width = 12,
                 fluidRow(
-                  column(4, textInput("add_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
-                  column(3, textInput("add_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
-                  column(5, textInput("add_link", "URL / Product Link", placeholder = "e.g., https://..."))
-                ),
-                fluidRow(
-                  column(4,
+  column(4,
                     selectizeInput(
                       "add_category",
                       "Category",
@@ -336,7 +331,11 @@ server <- function(input, output, session) {
                         create      = TRUE
                       )
                     )
-                  )
+                  ),
+                  column(4, textInput("add_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
+                  column(3, textInput("add_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
+                  column(12, textInput("add_link", "URL / Product Link", placeholder = "e.g., https://..."))
+              
                 ),
                 div(
                   style = "text-align: right;",
@@ -387,12 +386,7 @@ server <- function(input, output, session) {
                 collapsed = FALSE,
                 width = 12,
                 fluidRow(
-                  column(4, textInput("add_other_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
-                  column(3, textInput("add_other_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
-                  column(5, textInput("add_other_link", "URL / Product Link", placeholder = "e.g., https://..."))
-                ),
-                fluidRow(
-                  column(4,
+                      column(4,
                     selectizeInput(
                       "add_other_category",
                       "Category",
@@ -409,8 +403,11 @@ server <- function(input, output, session) {
                         create      = TRUE
                       )
                     )
-                  )
-                ),
+                  ),
+                  column(4, textInput("add_other_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
+                  column(3, textInput("add_other_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
+                  column(12, textInput("add_other_link", "URL / Product Link", placeholder = "e.g., https://..."))
+                )
                 div(
                   style = "text-align: right;",
                   uiOutput("submit_other_item_btn_ui")
