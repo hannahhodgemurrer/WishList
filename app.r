@@ -14,16 +14,16 @@ library(jsonlite)
 sheet_url <- "https://docs.google.com/spreadsheets/d/1Sjx9ETDXCIeTnuDJ_aUokqzt-mOfGyKg_HTljzunkOc/edit?gid=1726487847#gid=1726487847"
 
 ### use locally
-# gs4_auth(path = "service-account.json")
+ #gs4_auth(path = "service-account.json")
 
-service_account <- tempfile(fileext = ".json")
+#service_account <- tempfile(fileext = ".json")
 
-writeLines(
-  Sys.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
-  service_account
-)
+ writeLines(
+   Sys.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
+   service_account
+ )
 
-gs4_auth(path = service_account)
+ gs4_auth(path = service_account)
 
 # Convert a column name to its spreadsheet letter, based on current df column order.
 # Used so writes target the exact cell/row that changed instead of rewriting
@@ -318,6 +318,26 @@ server <- function(input, output, session) {
                   column(3, textInput("add_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
                   column(5, textInput("add_link", "URL / Product Link", placeholder = "e.g., https://..."))
                 ),
+                fluidRow(
+                  column(4,
+                    selectizeInput(
+                      "add_category",
+                      "Category",
+                      choices  = c(
+                        "" ,
+                        "Accessory", "Activity", "Beauty Product", "Car",
+                        "Clothes", "Decorations", "Food", "Games", "Gardening",
+                        "Gift Card", "Household Item", "Luggage", "Miscellaneous",
+                        "Shoes", "Stocking", "Tools", "Toy", "Treats", "Vinyl"
+                      ),
+                      selected = "",
+                      options  = list(
+                        placeholder = "Select or type a category...",
+                        create      = TRUE
+                      )
+                    )
+                  )
+                ),
                 div(
                   style = "text-align: right;",
                   actionButton("submit_item", "Add Item", icon = icon("plus"), class = "btn-success")
@@ -370,6 +390,26 @@ server <- function(input, output, session) {
                   column(4, textInput("add_other_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
                   column(3, textInput("add_other_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
                   column(5, textInput("add_other_link", "URL / Product Link", placeholder = "e.g., https://..."))
+                ),
+                fluidRow(
+                  column(4,
+                    selectizeInput(
+                      "add_other_category",
+                      "Category",
+                      choices  = c(
+                        "",
+                        "Accessory", "Activity", "Beauty Product", "Car",
+                        "Clothes", "Decorations", "Food", "Games", "Gardening",
+                        "Gift Card", "Household Item", "Luggage", "Miscellaneous",
+                        "Shoes", "Stocking", "Tools", "Toy", "Treats", "Vinyl"
+                      ),
+                      selected = "",
+                      options  = list(
+                        placeholder = "Select or type a category...",
+                        create      = TRUE
+                      )
+                    )
+                  )
                 ),
                 div(
                   style = "text-align: right;",
@@ -468,6 +508,13 @@ server <- function(input, output, session) {
       df$`Entered By` <- NA_character_
     } else {
       df$`Entered By` <- ifelse(is.na(df$`Entered By`) | !nzchar(as.character(df$`Entered By`)), NA_character_, as.character(df$`Entered By`))
+    }
+
+    # Ensure 'Category' column exists
+    if (!"Category" %in% names(df)) {
+      df$Category <- NA_character_
+    } else {
+      df$Category <- ifelse(is.na(df$Category) | !nzchar(trimws(as.character(df$Category))), NA_character_, as.character(df$Category))
     }
 
     df
@@ -633,6 +680,20 @@ server <- function(input, output, session) {
     }
   })
 
+  # ── Helper: align new_row column order to match the live sheet ───────────
+  # sheet_append writes by POSITION, so new_row must match the sheet's
+  # column order exactly. This reorders new_row to match local_df(), and
+  # appends any extra columns (e.g. Category not yet in sheet) at the end.
+  align_new_row <- function(new_row) {
+    sheet_cols  <- setdiff(names(local_df()), "row_id")       # live sheet order
+    common      <- intersect(sheet_cols, names(new_row))       # cols in both
+    extras      <- setdiff(names(new_row), sheet_cols)         # new cols not in sheet yet
+    missing     <- setdiff(sheet_cols, names(new_row))         # sheet cols not in new_row
+    # Fill any sheet columns we didn't supply with NA
+    for (col in missing) new_row[[col]] <- NA_character_
+    new_row[, c(intersect(sheet_cols, names(new_row)), extras), drop = FALSE]
+  }
+
   # Add New Item to Google Sheet
   observeEvent(input$submit_item, {
     req(rv$current_user)
@@ -643,29 +704,33 @@ server <- function(input, output, session) {
       return()
     }
 
-    item_size <- if (nzchar(trimws(input$add_size))) trimws(input$add_size) else NA_character_
-    item_link <- if (nzchar(trimws(input$add_link))) trimws(input$add_link) else NA_character_
+    item_size     <- if (nzchar(trimws(input$add_size)))     trimws(input$add_size)     else NA_character_
+    item_link     <- if (nzchar(trimws(input$add_link)))     trimws(input$add_link)     else NA_character_
+    item_category <- if (nzchar(trimws(input$add_category))) trimws(input$add_category) else NA_character_
 
     new_row <- data.frame(
-      Name = rv$current_user,
-      Item = item_name,
-      Size = item_size,
-      Link = item_link,
-      Bought = "No",
+      Name         = rv$current_user,
+      Category     = item_category,
+      Item         = item_name,
+      Size         = item_size,
+      Link         = item_link,
+      Bought       = "No",
       `Who Bought` = NA_character_,
       `Entered By` = rv$current_user,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
+    new_row <- align_new_row(new_row)
 
     tryCatch(
       {
         sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
         showNotification(paste("Successfully added", item_name), type = "message")
 
-        updateTextInput(session, "add_item", value = "")
-        updateTextInput(session, "add_size", value = "")
-        updateTextInput(session, "add_link", value = "")
+        updateTextInput(session,      "add_item",     value = "")
+        updateTextInput(session,      "add_size",     value = "")
+        updateTextInput(session,      "add_link",     value = "")
+        updateSelectizeInput(session, "add_category", selected = "")
 
         # Re-fetch dataset
         local_df(fetch_sheet_data())
@@ -696,29 +761,33 @@ server <- function(input, output, session) {
       return()
     }
 
-    item_size <- if (nzchar(trimws(input$add_other_size))) trimws(input$add_other_size) else NA_character_
-    item_link <- if (nzchar(trimws(input$add_other_link))) trimws(input$add_other_link) else NA_character_
+    item_size     <- if (nzchar(trimws(input$add_other_size)))     trimws(input$add_other_size)     else NA_character_
+    item_link     <- if (nzchar(trimws(input$add_other_link)))     trimws(input$add_other_link)     else NA_character_
+    item_category <- if (nzchar(trimws(input$add_other_category))) trimws(input$add_other_category) else NA_character_
 
     new_row <- data.frame(
-      Name = input$selected_other,
-      Item = item_name,
-      Size = item_size,
-      Link = item_link,
-      Bought = "No",
+      Name         = input$selected_other,
+      Category     = item_category,
+      Item         = item_name,
+      Size         = item_size,
+      Link         = item_link,
+      Bought       = "No",
       `Who Bought` = NA_character_,
       `Entered By` = rv$current_user,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
+    new_row <- align_new_row(new_row)
 
     tryCatch(
       {
         sheet_append(ss = sheet_url, data = new_row, sheet = "WishLists")
         showNotification(paste("Successfully added", item_name, "for", input$selected_other, "!"), type = "message")
 
-        updateTextInput(session, "add_other_item", value = "")
-        updateTextInput(session, "add_other_size", value = "")
-        updateTextInput(session, "add_other_link", value = "")
+        updateTextInput(session,      "add_other_item",     value = "")
+        updateTextInput(session,      "add_other_size",     value = "")
+        updateTextInput(session,      "add_other_link",     value = "")
+        updateSelectizeInput(session, "add_other_category", selected = "")
 
         # Re-fetch dataset
         local_df(fetch_sheet_data())
@@ -759,15 +828,18 @@ server <- function(input, output, session) {
     req(df, rv$current_user)
 
     my_df <- df %>%
-      mutate(row_id = row_number()) %>%
-      filter(
-        Name == rv$current_user &
-          (is.na(`Entered By`) | `Entered By` == rv$current_user)
-      ) %>%
-      arrange(tolower(ifelse(is.na(Item), "", Item)))
+  mutate(row_id = row_number()) %>%
+  filter(
+    Name == rv$current_user &
+      (is.na(`Entered By`) | `Entered By` == rv$current_user)
+  ) %>%
+  arrange(
+    tolower(ifelse(is.na(Category), "", Category)),
+    tolower(ifelse(is.na(Item), "", Item))
+  )
 
     reactable(
-      my_df %>% select(Item, Size, Link, row_id),
+      my_df %>% select(Category, Item, Size, Link, row_id),
       pagination = FALSE,
       wrap = TRUE,
       filterable = FALSE,
@@ -781,7 +853,62 @@ server <- function(input, output, session) {
           wordBreak = "break-word"
         )
       ),
-      columns = list(
+      columns = list(Category = colDef(
+          name = "Category",
+          headerStyle = list(fontWeight = "bold"),
+  minWidth = 180,
+
+  style = list(
+    whiteSpace = "pre-wrap",
+    wordBreak = "break-word"
+  ),
+
+  cell = function(value, index) {
+
+    row_id <- my_df$row_id[index]
+
+    cur_val <- ifelse(
+      is.na(value),
+      "",
+      as.character(value)
+    )
+
+
+    tags$textarea(
+      value = cur_val,
+
+      placeholder = "Item name...",
+
+      onblur = sprintf(
+  "Shiny.setInputValue(
+    'my_edit',
+    {
+      row:%d,
+      col:'Category',
+      value:this.value
+    },
+    {priority:'event'}
+  )",
+  row_id
+),
+      onkeydown = "event.stopPropagation();",
+
+      onclick = "event.stopPropagation();",
+
+      class = "form-control",
+
+      style =
+        "padding:4px 6px;
+         font-size:13px;
+         font-weight:bold;
+         width:100%;
+         min-height:38px;
+         resize:vertical;
+         white-space:pre-wrap;
+         overflow-wrap:break-word;"
+    )
+  }
+),
 
         Item = colDef(
           name = "Item",
@@ -922,7 +1049,7 @@ server <- function(input, output, session) {
     info <- input$my_edit
     req(info$row, info$col, !is.null(info$value))
 
-    if (info$col %in% c("Item", "Size", "Link")) {
+    if (info$col %in% c("Category", "Item", "Size", "Link")) {
       if (is.null(rv$my_edits)) {
         rv$my_edits <- list()
       }
@@ -1071,8 +1198,8 @@ server <- function(input, output, session) {
     req(df, input$selected_other, rv$current_user)
     allowed_names <- get_allowed_names(rv$current_user, available_names())
     req(input$selected_other %in% allowed_names)
-    count <- sum(df$Name == input$selected_other & (is.na(df$`Entered By`) | df$`Entered By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
-    valueBox(count, paste("Total Items for", input$selected_other), icon = icon("gift"), color = "teal")
+    bought_count <- sum(df$Name == input$selected_other & df$Bought == "Yes", na.rm = TRUE)
+    valueBox(bought_count, paste("Total Items Bought for", input$selected_other), icon = icon("gift"), color = "red")
   })
 
   # Tab 2: Other Person Bought Count Box
@@ -1094,119 +1221,211 @@ server <- function(input, output, session) {
     req(input$selected_other %in% allowed_names)
 
     df_with_id <- df %>% mutate(row_id = row_number())
+
+    if (!"Category" %in% names(df_with_id)) {
+      df_with_id$Category <- "Uncategorized"
+    }
+
+    df_with_id <- df_with_id %>%
+      mutate(
+        Category = ifelse(
+          is.na(Category) | !nzchar(trimws(as.character(Category))),
+          "Uncategorized",
+          trimws(as.character(Category))
+        )
+      )
+
     others_df <- df_with_id %>%
       filter(Name == input$selected_other) %>%
-      arrange(Bought == "Yes", tolower(ifelse(is.na(Item), "", Item)))
+      arrange(
+        Category == "Uncategorized",
+        Category,
+        Bought == "Yes",
+        tolower(ifelse(is.na(Item), "", Item))
+      ) %>%
+      # Flatten any list-columns that googlesheets4 may produce so bind_rows works
+      mutate(across(where(is.list), ~ sapply(., function(x) {
+        if (is.null(x) || length(x) == 0) NA_character_
+        else as.character(x[[1]])
+      })))
 
     names_choices <- sort(unique(allowed_names))
 
+    # ── Build grouped_df: inject a header row before each category ──────────
+    if (nrow(others_df) == 0) {
+      grouped_df <- others_df %>% mutate(is_header = logical(0))
+    } else {
+      categories <- unique(others_df$Category)
+      grouped_list <- lapply(categories, function(cat_name) {
+        sub_df <- others_df %>% filter(Category == cat_name)
+        sub_df$is_header <- FALSE
+
+        # Build one header row by copying structure from first data row
+        hdr <- sub_df[1, , drop = FALSE]
+        hdr$is_header   <- TRUE
+        hdr$row_id      <- NA_integer_
+        hdr$Item        <- cat_name 
+        hdr$Size        <- ""
+        hdr$Bought      <- ""
+        hdr$`Who Bought`<- ""
+        hdr$`Entered By`<- ""
+        hdr$Link        <- ""
+
+        bind_rows(hdr, sub_df)
+      })
+      grouped_df <- bind_rows(grouped_list)
+    }
+
+    # ── Helper used inside every cell function ──────────────────────────────
+    is_hdr <- function(index) isTRUE(grouped_df$is_header[index])
+
     reactable(
-      others_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
-      pagination = FALSE,
-      wrap = TRUE,
-      filterable = TRUE,
-      searchable = TRUE,
-      striped = TRUE,
-      highlight = TRUE,
-      bordered = TRUE,
+      grouped_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
+      pagination    = FALSE,
+      wrap          = TRUE,
+      filterable    = TRUE,
+      searchable    = TRUE,
+      striped       = TRUE,
+      highlight     = TRUE,
+      bordered      = TRUE,
+      sortable      = FALSE,
+
       rowStyle = function(index) {
-        if (others_df$Bought[index] == "Yes") {
-          list(backgroundColor = "#fce8e6")
+        if (is_hdr(index)) {
+          return(list(
+            backgroundColor = "#dce3ea",
+            fontWeight      = "bold",
+            fontSize        = "14px",
+            color           = "#1a252f"
+          ))
         }
+        if (isTRUE(grouped_df$Bought[index] == "Yes")) {
+          return(list(backgroundColor = "#fce8e6"))
+        }
+        NULL
       },
+
       language = reactableLang(
         searchPlaceholder = "Search items...",
         filterPlaceholder = "Filter..."
       ),
+
       columns = list(
+
         Item = colDef(
           headerStyle = list(fontWeight = "bold"),
-          style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
+          style       = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
           cell = function(value, index) {
-            link_url <- others_df$Link[index]
+            if (is_hdr(index)) {
+              return(tags$span(
+                style = "font-weight: bold; font-size: 14px; color: #1a252f;",
+                value
+              ))
+            }
+
+            link_url <- grouped_df$Link[index]
             has_link <- !is.na(link_url) && nzchar(trimws(as.character(link_url)))
 
             if (has_link) {
               url <- trimws(as.character(link_url))
-              if (!grepl("^https?://", url, ignore.case = TRUE)) {
-                url <- paste0("https://", url)
-              }
+              if (!grepl("^https?://", url, ignore.case = TRUE)) url <- paste0("https://", url)
               tags$a(
-                href = url,
-                target = "_blank",
-                rel = "noopener noreferrer",
-                style = "color: #3c8dbc; font-weight: bold; text-decoration: underline; white-space: pre-wrap; word-break: break-word;",
-                value,
-                " ",
-                icon("external-link-alt", style = "font-size: 11px; margin-left: 3px; vertical-align: baseline;")
+                href   = url, target = "_blank", rel = "noopener noreferrer",
+                style  = "color: #3c8dbc; font-weight: bold; text-decoration: underline;
+                          white-space: pre-wrap; word-break: break-word;",
+                value, " ",
+                icon("external-link-alt",
+                     style = "font-size: 11px; margin-left: 3px; vertical-align: baseline;")
               )
             } else {
               tags$div(
-                style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
+                style = "white-space: pre-wrap; word-break: break-word;
+                         overflow-wrap: break-word; font-weight: bold;",
                 value
               )
             }
           }
         ),
+
         Size = colDef(
-          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word")
+          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word"),
+          cell  = function(value, index) {
+            if (is_hdr(index)) return("")
+            value
+          }
         ),
+
         Bought = colDef(
           name = "Bought?",
           cell = function(value, index) {
-            row_id <- others_df$row_id[index]
+            if (is_hdr(index)) return("")
+
+            row_id      <- grouped_df$row_id[index]
             current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "No", as.character(value))
-            is_yes <- (current_val == "Yes")
+            is_yes      <- (current_val == "Yes")
 
             select_style <- if (is_yes) {
-              "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px; background-color: #d9534f; color: white; font-weight: bold; border-color: #d43f3a;"
+              "height:32px; padding:2px 6px; font-size:13px; min-width:90px;
+               background-color:#d9534f; color:white; font-weight:bold; border-color:#d43f3a;"
             } else {
-              "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px;"
+              "height:32px; padding:2px 6px; font-size:13px; min-width:90px;"
             }
 
             tags$select(
-              onchange = sprintf("Shiny.setInputValue('bought_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              onchange = sprintf(
+                "Shiny.setInputValue('bought_change', {id: %d, value: this.value}, {priority: 'event'})",
+                row_id
+              ),
               class = "form-control",
               style = select_style,
-              tags$option(value = "No", selected = if (!is_yes) "selected" else NULL, "No"),
-              tags$option(value = "Yes", selected = if (is_yes) "selected" else NULL, "Yes")
+              tags$option(value = "No",  selected = if (!is_yes) "selected" else NULL, "No"),
+              tags$option(value = "Yes", selected = if (is_yes)  "selected" else NULL, "Yes")
             )
           }
         ),
+
         `Who Bought` = colDef(
           name = "Who Bought It",
           cell = function(value, index) {
-            row_id <- others_df$row_id[index]
+            if (is_hdr(index)) return("")
+
+            row_id      <- grouped_df$row_id[index]
             current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "", as.character(value))
 
-            opt_list <- list(tags$option(value = "", selected = if (!nzchar(current_val)) "selected" else NULL, "-- Select --"))
+            opt_list <- list(
+              tags$option(value = "",
+                          selected = if (!nzchar(current_val)) "selected" else NULL,
+                          "-- Select --")
+            )
             for (nm in names_choices) {
               opt_list[[length(opt_list) + 1]] <- tags$option(
-                value = nm,
+                value    = nm,
                 selected = if (current_val == nm) "selected" else NULL,
                 nm
               )
             }
 
             tags$select(
-              onchange = sprintf("Shiny.setInputValue('buyer_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              onchange = sprintf(
+                "Shiny.setInputValue('buyer_change', {id: %d, value: this.value}, {priority: 'event'})",
+                row_id
+              ),
               class = "form-control",
-              style = "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 140px;",
+              style = "height:32px; padding:2px 6px; font-size:13px; min-width:140px;",
               opt_list
             )
           }
         ),
+
         `Entered By` = colDef(
           name = "Entered By",
           cell = function(value, index) {
-            owner_name <- others_df$Name[index]
-            if (is.na(value) || !nzchar(as.character(value))) {
-              owner_name
-            } else {
-              as.character(value)
-            }
+            if (is_hdr(index)) return("")
+            owner_name <- grouped_df$Name[index]
+            if (is.na(value) || !nzchar(as.character(value))) owner_name else as.character(value)
           }
         )
+
       )
     )
   })
