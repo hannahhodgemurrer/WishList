@@ -1015,16 +1015,7 @@ style =
                 onkeydown = "event.stopPropagation();",
                 onclick = "event.stopPropagation();",
                 class = "form-control",
-                style = "padding:4px 6px; font-size:13px; display:inline-block; width:calc(100% - 36px);"
-              ),
-              if (nzchar(cur_val)) {
-                tags$a(
-                  href = cur_val,
-                  target = "_blank",
-                  rel = "noopener noreferrer",
-                  icon("external-link-alt"),
-                  style =
-        "padding:4px 6px;
+                style =  "padding:4px 6px;
          font-size:13px;
          font-weight:bold;
          width:100%;
@@ -1032,6 +1023,14 @@ style =
          resize:vertical;
          white-space:pre-wrap;
          overflow-wrap:break-word;" 
+              ),
+              if (nzchar(cur_val)) {
+                tags$a(
+                  href = cur_val,
+                  target = "_blank",
+                  rel = "noopener noreferrer",
+                  icon("external-link-alt"),
+                  syle = "margin-left:6px; vertical-align:tmiddle;"
                 )
               }
             )
@@ -1308,10 +1307,10 @@ style =
       rowStyle = function(index) {
         if (is_hdr(index)) {
           return(list(
-            backgroundColor = "#dce3ea",
+            backgroundColor = "#c61393ff",
             fontWeight      = "bold",
             fontSize        = "14px",
-            color           = "#9a5bbfff"
+            color           = "#9616e6ff"
           ))
         }
         if (isTRUE(grouped_df$Bought[index] == "Yes")) {
@@ -1333,7 +1332,7 @@ style =
           cell = function(value, index) {
             if (is_hdr(index)) {
               return(tags$span(
-                style = "font-weight: bold; font-size: 14px; color: #9339b9ff;",
+                style = "font-weight: bold; font-size: 14px; color: #872ee1ff;",
                 value
               ))
             }
