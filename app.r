@@ -470,13 +470,6 @@ server <- function(input, output, session) {
       df$`Entered By` <- ifelse(is.na(df$`Entered By`) | !nzchar(as.character(df$`Entered By`)), NA_character_, as.character(df$`Entered By`))
     }
 
-    # Ensure 'Category' column exists
-    if (!"Category" %in% names(df)) {
-      df$Category <- NA_character_
-    } else {
-      df$Category <- ifelse(is.na(df$Category) | !nzchar(trimws(as.character(df$Category))), NA_character_, as.character(df$Category))
-    }
-
     df
   }
 
@@ -1101,62 +1094,14 @@ server <- function(input, output, session) {
     req(input$selected_other %in% allowed_names)
 
     df_with_id <- df %>% mutate(row_id = row_number())
-
-    if (!"Category" %in% names(df_with_id)) {
-      df_with_id$Category <- "Uncategorized"
-    }
-
-    df_with_id <- df_with_id %>%
-      mutate(
-        Category = ifelse(
-          is.na(Category) | !nzchar(trimws(as.character(Category))),
-          "Uncategorized",
-          trimws(as.character(Category))
-        )
-      )
-
     others_df <- df_with_id %>%
       filter(Name == input$selected_other) %>%
-      arrange(
-        Category == "Uncategorized",
-        Category,
-        Bought == "Yes",
-        tolower(ifelse(is.na(Item), "", Item))
-      )
+      arrange(Bought == "Yes", tolower(ifelse(is.na(Item), "", Item)))
 
     names_choices <- sort(unique(allowed_names))
 
-    # Build grouped dataset with category header rows
-    if (nrow(others_df) == 0) {
-      grouped_df <- others_df %>% mutate(is_header = logical(0))
-    } else {
-      categories <- unique(others_df$Category)
-      grouped_list <- vector("list", length(categories))
-
-      for (i in seq_along(categories)) {
-        cat_name <- categories[i]
-        sub_df <- others_df %>% filter(Category == cat_name)
-
-        header_row <- sub_df[1, , drop = FALSE]
-        header_row$row_id <- NA
-        header_row$Item <- paste0("📂 ", cat_name)
-        header_row$Size <- ""
-        header_row$Bought <- ""
-        header_row$`Who Bought` <- ""
-        header_row$`Entered By` <- ""
-        header_row$Link <- ""
-        header_row$is_header <- TRUE
-
-        sub_df$is_header <- FALSE
-
-        grouped_list[[i]] <- bind_rows(header_row, sub_df)
-      }
-
-      grouped_df <- bind_rows(grouped_list)
-    }
-
     reactable(
-      grouped_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
+      others_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
       pagination = FALSE,
       wrap = TRUE,
       filterable = TRUE,
@@ -1164,22 +1109,10 @@ server <- function(input, output, session) {
       striped = TRUE,
       highlight = TRUE,
       bordered = TRUE,
-      sortable = FALSE,
       rowStyle = function(index) {
-        if (grouped_df$is_header[index]) {
-          return(list(
-            backgroundColor = "#e9ecef",
-            fontWeight = "bold",
-            fontSize = "15px",
-            color = "#212529"
-          ))
+        if (others_df$Bought[index] == "Yes") {
+          list(backgroundColor = "#fce8e6")
         }
-
-        if (grouped_df$Bought[index] == "Yes") {
-          return(list(backgroundColor = "#fce8e6"))
-        }
-
-        NULL
       },
       language = reactableLang(
         searchPlaceholder = "Search items...",
@@ -1190,16 +1123,7 @@ server <- function(input, output, session) {
           headerStyle = list(fontWeight = "bold"),
           style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
           cell = function(value, index) {
-            if (grouped_df$is_header[index]) {
-              return(
-                tags$div(
-                  style = "font-weight: bold; font-size: 15px; color: #2c3e50; padding: 4px 0;",
-                  value
-                )
-              )
-            }
-
-            link_url <- grouped_df$Link[index]
+            link_url <- others_df$Link[index]
             has_link <- !is.na(link_url) && nzchar(trimws(as.character(link_url)))
 
             if (has_link) {
@@ -1225,21 +1149,12 @@ server <- function(input, output, session) {
           }
         ),
         Size = colDef(
-          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word"),
-          cell = function(value, index) {
-            if (grouped_df$is_header[index]) {
-              return("")
-            }
-            value
-          }
+          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word")
         ),
         Bought = colDef(
           name = "Bought?",
           cell = function(value, index) {
-            if (grouped_df$is_header[index]) {
-              return("")
-            }
-            row_id <- grouped_df$row_id[index]
+            row_id <- others_df$row_id[index]
             current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "No", as.character(value))
             is_yes <- (current_val == "Yes")
 
@@ -1261,10 +1176,7 @@ server <- function(input, output, session) {
         `Who Bought` = colDef(
           name = "Who Bought It",
           cell = function(value, index) {
-            if (grouped_df$is_header[index]) {
-              return("")
-            }
-            row_id <- grouped_df$row_id[index]
+            row_id <- others_df$row_id[index]
             current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "", as.character(value))
 
             opt_list <- list(tags$option(value = "", selected = if (!nzchar(current_val)) "selected" else NULL, "-- Select --"))
@@ -1287,10 +1199,7 @@ server <- function(input, output, session) {
         `Entered By` = colDef(
           name = "Entered By",
           cell = function(value, index) {
-            if (grouped_df$is_header[index]) {
-              return("")
-            }
-            owner_name <- grouped_df$Name[index]
+            owner_name <- others_df$Name[index]
             if (is.na(value) || !nzchar(as.character(value))) {
               owner_name
             } else {
