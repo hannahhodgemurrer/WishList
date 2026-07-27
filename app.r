@@ -1023,7 +1023,15 @@ style =
                   target = "_blank",
                   rel = "noopener noreferrer",
                   icon("external-link-alt"),
-                  style = "margin-left:6px; vertical-align:middle;"
+                  style =
+        "padding:4px 6px;
+         font-size:13px;
+         font-weight:bold;
+         width:100%;
+         min-height:38px;
+         resize:vertical;
+         white-space:pre-wrap;
+         overflow-wrap:break-word;" 
                 )
               }
             )
@@ -1303,7 +1311,7 @@ style =
             backgroundColor = "#dce3ea",
             fontWeight      = "bold",
             fontSize        = "14px",
-            color           = "#271a2fff"
+            color           = "#9a5bbfff"
           ))
         }
         if (isTRUE(grouped_df$Bought[index] == "Yes")) {
@@ -1325,7 +1333,7 @@ style =
           cell = function(value, index) {
             if (is_hdr(index)) {
               return(tags$span(
-                style = "font-weight: bold; font-size: 14px; color: #1a252f;",
+                style = "font-weight: bold; font-size: 14px; color: #9339b9ff;",
                 value
               ))
             }
