@@ -407,7 +407,7 @@ server <- function(input, output, session) {
                   column(4, textInput("add_other_item", "Item Name*", placeholder = "e.g., Sweater, Shoes")),
                   column(3, textInput("add_other_size", "Size / Options", placeholder = "e.g., Medium, Size 8")),
                   column(12, textInput("add_other_link", "URL / Product Link", placeholder = "e.g., https://..."))
-                )
+                ),
                 div(
                   style = "text-align: right;",
                   uiOutput("submit_other_item_btn_ui")
