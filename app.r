@@ -470,6 +470,13 @@ server <- function(input, output, session) {
       df$`Entered By` <- ifelse(is.na(df$`Entered By`) | !nzchar(as.character(df$`Entered By`)), NA_character_, as.character(df$`Entered By`))
     }
 
+    # Ensure 'Category' column exists
+    if (!"Category" %in% names(df)) {
+      df$Category <- NA_character_
+    } else {
+      df$Category <- ifelse(is.na(df$Category) | !nzchar(trimws(as.character(df$Category))), NA_character_, as.character(df$Category))
+    }
+
     df
   }
 
@@ -1072,7 +1079,7 @@ server <- function(input, output, session) {
     allowed_names <- get_allowed_names(rv$current_user, available_names())
     req(input$selected_other %in% allowed_names)
     count <- sum(df$Name == input$selected_other & (is.na(df$`Entered By`) | df$`Entered By` == rv$current_user) & !is.na(df$Item), na.rm = TRUE)
-    valueBox(count, paste("Total Items Bought for", input$selected_other), icon = icon("gift"), color = "teal")
+    valueBox(count, paste("Total Items for", input$selected_other), icon = icon("gift"), color = "teal")
   })
 
   # Tab 2: Other Person Bought Count Box
@@ -1086,308 +1093,214 @@ server <- function(input, output, session) {
   })
 
   # ── Tab 2: Others Wish List Table ──────────────────────────────────────────
- # ── Tab 2: Others Wish List Table ──────────────────────────────────────────
-output$others_wishlist_table <- renderReactable({
+  output$others_wishlist_table <- renderReactable({
+    df <- local_df()
+    req(df, input$selected_other, rv$current_user)
 
-  df <- local_df()
-  req(df, input$selected_other, rv$current_user)
+    allowed_names <- get_allowed_names(rv$current_user, available_names())
+    req(input$selected_other %in% allowed_names)
 
-  allowed_names <- get_allowed_names(rv$current_user, available_names())
-  req(input$selected_other %in% allowed_names)
+    df_with_id <- df %>% mutate(row_id = row_number())
 
-  df_with_id <- df %>%
-    mutate(row_id = row_number())
+    if (!"Category" %in% names(df_with_id)) {
+      df_with_id$Category <- "Uncategorized"
+    }
 
-  others_df <- df_with_id %>%
-    filter(Name == input$selected_other) %>%
-    arrange(
-      Category,
-      Bought == "Yes",
-      tolower(ifelse(is.na(Item), "", Item))
-    )
-
-  names_choices <- sort(unique(allowed_names))
-
-  # Create category header rows
-  grouped_df <- others_df %>%
-    split(.$Category) %>%
-    lapply(function(g) {
-
-      header <- g[1, ]
-
-      header$row_id <- NA
-      header$Item <- paste0("📂 ", header$Category)
-      header$Size <- ""
-      header$Bought <- ""
-      header$`Who Bought` <- ""
-      header$`Entered By` <- ""
-      header$Link <- ""
-      header$is_header <- TRUE
-
-      g$is_header <- FALSE
-
-      bind_rows(header, g)
-
-    }) %>%
-    bind_rows()
-
-  reactable(
-    grouped_df %>%
-      select(Item, Size, Bought, `Who Bought`, `Entered By`, is_header),
-
-    pagination = FALSE,
-    wrap = TRUE,
-    filterable = TRUE,
-    searchable = TRUE,
-    striped = TRUE,
-    highlight = TRUE,
-    bordered = TRUE,
-
-    rowStyle = function(index) {
-
-      if (grouped_df$is_header[index]) {
-        return(list(
-          backgroundColor = "#e9ecef",
-          fontWeight = "bold",
-          fontSize = "15px"
-        ))
-      }
-
-      if (grouped_df$Bought[index] == "Yes") {
-        return(list(backgroundColor = "#fce8e6"))
-      }
-
-      NULL
-    },
-
-    language = reactableLang(
-      searchPlaceholder = "Search items...",
-      filterPlaceholder = "Filter..."
-    ),
-
-    columns = list(
-
-      Item = colDef(
-        headerStyle = list(fontWeight = "bold"),
-        style = list(
-          fontWeight = "bold",
-          whiteSpace = "pre-wrap",
-          wordBreak = "break-word"
-        ),
-
-        cell = function(value, index) {
-
-          if (grouped_df$is_header[index]) {
-            return(
-              tags$div(
-                style = "
-                  font-weight:bold;
-                  font-size:16px;
-                  padding:6px 0;
-                ",
-                value
-              )
-            )
-          }
-
-          link_url <- grouped_df$Link[index]
-          has_link <- !is.na(link_url) &&
-            nzchar(trimws(as.character(link_url)))
-
-          if (has_link) {
-
-            url <- trimws(as.character(link_url))
-
-            if (!grepl("^https?://", url, ignore.case = TRUE)) {
-              url <- paste0("https://", url)
-            }
-
-            tags$a(
-              href = url,
-              target = "_blank",
-              rel = "noopener noreferrer",
-              style = "color:#3c8dbc;
-                       font-weight:bold;
-                       text-decoration:underline;
-                       white-space:pre-wrap;
-                       word-break:break-word;",
-              value,
-              " ",
-              icon(
-                "external-link-alt",
-                style = "font-size:11px;
-                         margin-left:3px;
-                         vertical-align:baseline;"
-              )
-            )
-
-          } else {
-
-            tags$div(
-              style = "
-                white-space:pre-wrap;
-                word-break:break-word;
-                overflow-wrap:break-word;
-                font-weight:bold;
-              ",
-              value
-            )
-
-          }
-        }
-      ),
-
-      Size = colDef(
-        style = list(
-          whiteSpace = "pre-wrap",
-          wordBreak = "break-word"
-        ),
-
-        cell = function(value, index) {
-
-          if (grouped_df$is_header[index]) {
-            return("")
-          }
-
-          value
-        }
-      ),
-
-      Bought = colDef(
-
-        name = "Bought?",
-
-        cell = function(value, index) {
-
-          if (grouped_df$is_header[index]) {
-            return("")
-          }
-
-          row_id <- grouped_df$row_id[index]
-
-          current_val <- ifelse(
-            is.na(value) | !nzchar(as.character(value)),
-            "No",
-            as.character(value)
-          )
-
-          is_yes <- current_val == "Yes"
-
-          select_style <- if (is_yes) {
-            "height:32px;
-             padding:2px 6px;
-             font-size:13px;
-             min-width:90px;
-             background-color:#d9534f;
-             color:white;
-             font-weight:bold;
-             border-color:#d43f3a;"
-          } else {
-            "height:32px;
-             padding:2px 6px;
-             font-size:13px;
-             min-width:90px;"
-          }
-
-          tags$select(
-            onchange = sprintf(
-              "Shiny.setInputValue('bought_change',
-              {id:%d,value:this.value},
-              {priority:'event'})",
-              row_id
-            ),
-            class = "form-control",
-            style = select_style,
-            tags$option(
-              value = "No",
-              selected = if (!is_yes) "selected" else NULL,
-              "No"
-            ),
-            tags$option(
-              value = "Yes",
-              selected = if (is_yes) "selected" else NULL,
-              "Yes"
-            )
-          )
-        }
-      ),
-
-      `Who Bought` = colDef(
-
-        name = "Who Bought It",
-
-        cell = function(value, index) {
-
-          if (grouped_df$is_header[index]) {
-            return("")
-          }
-
-          row_id <- grouped_df$row_id[index]
-
-          current_val <- ifelse(
-            is.na(value) | !nzchar(as.character(value)),
-            "",
-            as.character(value)
-          )
-
-          opt_list <- list(
-            tags$option(
-              value = "",
-              selected = if (!nzchar(current_val)) "selected" else NULL,
-              "-- Select --"
-            )
-          )
-
-          for (nm in names_choices) {
-            opt_list[[length(opt_list) + 1]] <- tags$option(
-              value = nm,
-              selected = if (current_val == nm) "selected" else NULL,
-              nm
-            )
-          }
-
-          tags$select(
-            onchange = sprintf(
-              "Shiny.setInputValue('buyer_change',
-              {id:%d,value:this.value},
-              {priority:'event'})",
-              row_id
-            ),
-            class = "form-control",
-            style = "
-              height:32px;
-              padding:2px 6px;
-              font-size:13px;
-              min-width:140px;
-            ",
-            opt_list
-          )
-        }
-      ),
-
-      `Entered By` = colDef(
-
-        name = "Entered By",
-
-        cell = function(value, index) {
-
-          if (grouped_df$is_header[index]) {
-            return("")
-          }
-
-          owner_name <- grouped_df$Name[index]
-
-          if (is.na(value) || !nzchar(as.character(value))) {
-            owner_name
-          } else {
-            as.character(value)
-          }
-        }
+    df_with_id <- df_with_id %>%
+      mutate(
+        Category = ifelse(
+          is.na(Category) | !nzchar(trimws(as.character(Category))),
+          "Uncategorized",
+          trimws(as.character(Category))
+        )
       )
 
+    others_df <- df_with_id %>%
+      filter(Name == input$selected_other) %>%
+      arrange(
+        Category == "Uncategorized",
+        Category,
+        Bought == "Yes",
+        tolower(ifelse(is.na(Item), "", Item))
+      )
+
+    names_choices <- sort(unique(allowed_names))
+
+    # Build grouped dataset with category header rows
+    if (nrow(others_df) == 0) {
+      grouped_df <- others_df %>% mutate(is_header = logical(0))
+    } else {
+      categories <- unique(others_df$Category)
+      grouped_list <- vector("list", length(categories))
+
+      for (i in seq_along(categories)) {
+        cat_name <- categories[i]
+        sub_df <- others_df %>% filter(Category == cat_name)
+
+        header_row <- sub_df[1, , drop = FALSE]
+        header_row$row_id <- NA
+        header_row$Item <- paste0("📂 ", cat_name)
+        header_row$Size <- ""
+        header_row$Bought <- ""
+        header_row$`Who Bought` <- ""
+        header_row$`Entered By` <- ""
+        header_row$Link <- ""
+        header_row$is_header <- TRUE
+
+        sub_df$is_header <- FALSE
+
+        grouped_list[[i]] <- bind_rows(header_row, sub_df)
+      }
+
+      grouped_df <- bind_rows(grouped_list)
+    }
+
+    reactable(
+      grouped_df %>% select(Item, Size, Bought, `Who Bought`, `Entered By`),
+      pagination = FALSE,
+      wrap = TRUE,
+      filterable = TRUE,
+      searchable = TRUE,
+      striped = TRUE,
+      highlight = TRUE,
+      bordered = TRUE,
+      sortable = FALSE,
+      rowStyle = function(index) {
+        if (grouped_df$is_header[index]) {
+          return(list(
+            backgroundColor = "#e9ecef",
+            fontWeight = "bold",
+            fontSize = "15px",
+            color = "#212529"
+          ))
+        }
+
+        if (grouped_df$Bought[index] == "Yes") {
+          return(list(backgroundColor = "#fce8e6"))
+        }
+
+        NULL
+      },
+      language = reactableLang(
+        searchPlaceholder = "Search items...",
+        filterPlaceholder = "Filter..."
+      ),
+      columns = list(
+        Item = colDef(
+          headerStyle = list(fontWeight = "bold"),
+          style = list(fontWeight = "bold", whiteSpace = "pre-wrap", wordBreak = "break-word"),
+          cell = function(value, index) {
+            if (grouped_df$is_header[index]) {
+              return(
+                tags$div(
+                  style = "font-weight: bold; font-size: 15px; color: #2c3e50; padding: 4px 0;",
+                  value
+                )
+              )
+            }
+
+            link_url <- grouped_df$Link[index]
+            has_link <- !is.na(link_url) && nzchar(trimws(as.character(link_url)))
+
+            if (has_link) {
+              url <- trimws(as.character(link_url))
+              if (!grepl("^https?://", url, ignore.case = TRUE)) {
+                url <- paste0("https://", url)
+              }
+              tags$a(
+                href = url,
+                target = "_blank",
+                rel = "noopener noreferrer",
+                style = "color: #3c8dbc; font-weight: bold; text-decoration: underline; white-space: pre-wrap; word-break: break-word;",
+                value,
+                " ",
+                icon("external-link-alt", style = "font-size: 11px; margin-left: 3px; vertical-align: baseline;")
+              )
+            } else {
+              tags$div(
+                style = "white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; font-weight: bold;",
+                value
+              )
+            }
+          }
+        ),
+        Size = colDef(
+          style = list(whiteSpace = "pre-wrap", wordBreak = "break-word"),
+          cell = function(value, index) {
+            if (grouped_df$is_header[index]) {
+              return("")
+            }
+            value
+          }
+        ),
+        Bought = colDef(
+          name = "Bought?",
+          cell = function(value, index) {
+            if (grouped_df$is_header[index]) {
+              return("")
+            }
+            row_id <- grouped_df$row_id[index]
+            current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "No", as.character(value))
+            is_yes <- (current_val == "Yes")
+
+            select_style <- if (is_yes) {
+              "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px; background-color: #d9534f; color: white; font-weight: bold; border-color: #d43f3a;"
+            } else {
+              "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 90px;"
+            }
+
+            tags$select(
+              onchange = sprintf("Shiny.setInputValue('bought_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = select_style,
+              tags$option(value = "No", selected = if (!is_yes) "selected" else NULL, "No"),
+              tags$option(value = "Yes", selected = if (is_yes) "selected" else NULL, "Yes")
+            )
+          }
+        ),
+        `Who Bought` = colDef(
+          name = "Who Bought It",
+          cell = function(value, index) {
+            if (grouped_df$is_header[index]) {
+              return("")
+            }
+            row_id <- grouped_df$row_id[index]
+            current_val <- ifelse(is.na(value) | !nzchar(as.character(value)), "", as.character(value))
+
+            opt_list <- list(tags$option(value = "", selected = if (!nzchar(current_val)) "selected" else NULL, "-- Select --"))
+            for (nm in names_choices) {
+              opt_list[[length(opt_list) + 1]] <- tags$option(
+                value = nm,
+                selected = if (current_val == nm) "selected" else NULL,
+                nm
+              )
+            }
+
+            tags$select(
+              onchange = sprintf("Shiny.setInputValue('buyer_change', {id: %d, value: this.value}, {priority: 'event'})", row_id),
+              class = "form-control",
+              style = "height: 32px; padding: 2px 6px; font-size: 13px; min-width: 140px;",
+              opt_list
+            )
+          }
+        ),
+        `Entered By` = colDef(
+          name = "Entered By",
+          cell = function(value, index) {
+            if (grouped_df$is_header[index]) {
+              return("")
+            }
+            owner_name <- grouped_df$Name[index]
+            if (is.na(value) || !nzchar(as.character(value))) {
+              owner_name
+            } else {
+              as.character(value)
+            }
+          }
+        )
+      )
     )
-  )
-})
+  })
 }
 
 shinyApp(ui = ui, server = server)
