@@ -534,13 +534,13 @@ server <- function(input, output, session) {
 
   # Define group memberships
   group_1_members <- c(
-    "Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
+    "Hannah", "Jacob", "Sinatra/Versailles",
     "Sara", "Charlie", "Emma", "Michael", "Ethan", "Violet", "Pepper", "Mark",
     "Dixie", "Wrenley", "Dixie/Wrenley", "Dixie / Wrenley"
   )
 
   group_2_members <- c(
-    "Hannah", "Jacob", "Sinatra", "Versailles", "Sinantra", "Sinantra/Versailles",
+    "Hannah", "Jacob", "Sinatra/Versailles",
     "Kim", "Rob", "Jackie", "Nick", "Sal"
   )
 
